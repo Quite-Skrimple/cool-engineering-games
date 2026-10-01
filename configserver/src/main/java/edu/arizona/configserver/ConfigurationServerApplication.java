@@ -1,6 +1,6 @@
-package edu.arizona;
+package edu.arizona.configserver;
 
-public class Main {
+public class ConfigurationServerApplication {
     public static void main(String[] args) {
         System.out.println("Hello world!");
     }

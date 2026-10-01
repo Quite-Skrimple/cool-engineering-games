@@ -1,6 +1,6 @@
-package edu.arizona;
+package edu.arizona.engagement;
 
-public class Main {
+public class EngementServiceApplication {
     public static void main(String[] args) {
         System.out.println("Hello world!");
     }
