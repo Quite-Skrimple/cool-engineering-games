@@ -1,0 +1,447 @@
+{
+  "info": {
+    "name": "Cool Engineering Games",
+    "description": "CRUD tests for identity-service (8081), game-catalog-service (8082), engagement-service (8083) and configserver (8888). Run the whole collection top to bottom: later requests reuse ids saved by earlier ones, and the final Cleanup folder deletes everything it created, so it can be re-run.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "identityUrl", "value": "http://localhost:8081" },
+    { "key": "catalogUrl", "value": "http://localhost:8082" },
+    { "key": "engagementUrl", "value": "http://localhost:8083" },
+    { "key": "configUrl", "value": "http://localhost:8888" }
+  ],
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "if (!pm.collectionVariables.get('suffix')) {",
+          "  pm.collectionVariables.set('suffix', String(Date.now()));",
+          "}"
+        ]
+      }
+    }
+  ],
+  "item": [
+    {
+      "name": "1. configserver",
+      "item": [
+        {
+          "name": "Get identity-service dev config",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "pm.test('200 OK', () => pm.response.to.have.status(200));",
+            "const body = pm.response.json();",
+            "pm.test('serves the dev profile', () => pm.expect(body.profiles).to.include('dev'));",
+            "pm.test('dev uses H2', () => pm.expect(JSON.stringify(body.propertySources)).to.include('jdbc:h2:mem'));"
+          ] } }],
+          "request": { "method": "GET", "header": [], "url": "{{configUrl}}/identity-service/dev" }
+        },
+        {
+          "name": "Get identity-service prod config",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "pm.test('200 OK', () => pm.response.to.have.status(200));",
+            "const body = pm.response.json();",
+            "pm.test('serves the prod profile', () => pm.expect(body.profiles).to.include('prod'));",
+            "pm.test('prod uses Postgres', () => pm.expect(JSON.stringify(body.propertySources)).to.include('jdbc:postgresql'));"
+          ] } }],
+          "request": { "method": "GET", "header": [], "url": "{{configUrl}}/identity-service/prod" }
+        },
+        {
+          "name": "Get game-catalog-service dev config",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "pm.test('200 OK', () => pm.response.to.have.status(200));",
+            "pm.test('has a property source', () => pm.expect(pm.response.json().propertySources.length).to.be.above(0));"
+          ] } }],
+          "request": { "method": "GET", "header": [], "url": "{{configUrl}}/game-catalog-service/dev" }
+        },
+        {
+          "name": "Get engagement-service dev config",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "pm.test('200 OK', () => pm.response.to.have.status(200));",
+            "pm.test('has a property source', () => pm.expect(pm.response.json().propertySources.length).to.be.above(0));"
+          ] } }],
+          "request": { "method": "GET", "header": [], "url": "{{configUrl}}/engagement-service/dev" }
+        }
+      ]
+    },
+    {
+      "name": "2. identity-service",
+      "item": [
+        {
+          "name": "Create user",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "pm.test('201 Created', () => pm.response.to.have.status(201));",
+            "const user = pm.response.json();",
+            "pm.test('has an id and the requested fields', () => {",
+            "  pm.expect(user.id).to.be.a('number');",
+            "  pm.expect(user.username).to.eql('player' + pm.collectionVariables.get('suffix'));",
+            "  pm.expect(user.role).to.eql('PLAYER');",
+            "});",
+            "pm.test('password is never returned', () => {",
+            "  pm.expect(user).to.not.have.property('password');",
+            "  pm.expect(user).to.not.have.property('passwordHash');",
+            "});",
+            "pm.collectionVariables.set('userId', user.id);"
+          ] } }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"username\": \"player{{suffix}}\",\n  \"email\": \"player{{suffix}}@arizona.edu\",\n  \"password\": \"password123\",\n  \"role\": \"PLAYER\"\n}" },
+            "url": "{{identityUrl}}/api/users"
+          }
+        },
+        {
+          "name": "Create user - duplicate username (409)",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "pm.test('409 Conflict', () => pm.response.to.have.status(409));",
+            "pm.test('names the clashing username', () => pm.expect(pm.response.text()).to.include('Username already in use'));"
+          ] } }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"username\": \"player{{suffix}}\",\n  \"email\": \"other{{suffix}}@arizona.edu\",\n  \"password\": \"password123\",\n  \"role\": \"PLAYER\"\n}" },
+            "url": "{{identityUrl}}/api/users"
+          }
+        },
+        {
+          "name": "Create user - invalid body (400)",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "pm.test('400 Bad Request', () => pm.response.to.have.status(400));"
+          ] } }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"username\": \"x\",\n  \"email\": \"not-an-email\",\n  \"password\": \"short\",\n  \"role\": \"PLAYER\"\n}" },
+            "url": "{{identityUrl}}/api/users"
+          }
+        },
+        {
+          "name": "Get all users",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "pm.test('200 OK', () => pm.response.to.have.status(200));",
+            "pm.test('includes the created user', () => {",
+            "  const ids = pm.response.json().map(u => u.id);",
+            "  pm.expect(ids).to.include(Number(pm.collectionVariables.get('userId')));",
+            "});"
+          ] } }],
+          "request": { "method": "GET", "header": [], "url": "{{identityUrl}}/api/users" }
+        },
+        {
+          "name": "Get user by id",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "pm.test('200 OK', () => pm.response.to.have.status(200));",
+            "pm.test('returns the right user', () => pm.expect(pm.response.json().id).to.eql(Number(pm.collectionVariables.get('userId'))));"
+          ] } }],
+          "request": { "method": "GET", "header": [], "url": "{{identityUrl}}/api/users/{{userId}}" }
+        },
+        {
+          "name": "Get user - unknown id (404)",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "pm.test('404 Not Found', () => pm.response.to.have.status(404));"
+          ] } }],
+          "request": { "method": "GET", "header": [], "url": "{{identityUrl}}/api/users/999999" }
+        },
+        {
+          "name": "Update user (promote to DEVELOPER)",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "pm.test('200 OK', () => pm.response.to.have.status(200));",
+            "pm.test('role updated', () => pm.expect(pm.response.json().role).to.eql('DEVELOPER'));"
+          ] } }],
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"username\": \"player{{suffix}}\",\n  \"email\": \"player{{suffix}}@arizona.edu\",\n  \"password\": \"password123\",\n  \"role\": \"DEVELOPER\"\n}" },
+            "url": "{{identityUrl}}/api/users/{{userId}}"
+          }
+        }
+      ]
+    },
+    {
+      "name": "3. game-catalog-service",
+      "item": [
+        {
+          "name": "Create game",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "pm.test('201 Created', () => pm.response.to.have.status(201));",
+            "const game = pm.response.json();",
+            "pm.test('new games start as PENDING', () => pm.expect(game.approvalStatus).to.eql('PENDING'));",
+            "pm.test('linked to the creator', () => pm.expect(game.creatorId).to.eql(Number(pm.collectionVariables.get('userId'))));",
+            "pm.collectionVariables.set('gameId', game.id);"
+          ] } }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"title\": \"Circuit Breaker {{suffix}}\",\n  \"description\": \"Puzzle game about logic gates\",\n  \"genre\": \"Puzzle\",\n  \"playableUrl\": \"https://example.com/circuit-breaker\",\n  \"creatorId\": {{userId}}\n}" },
+            "url": "{{catalogUrl}}/api/games"
+          }
+        },
+        {
+          "name": "Create game - invalid body (400)",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "pm.test('400 Bad Request', () => pm.response.to.have.status(400));"
+          ] } }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"title\": \"\",\n  \"genre\": \"Puzzle\",\n  \"playableUrl\": \"https://example.com/x\",\n  \"creatorId\": 1\n}" },
+            "url": "{{catalogUrl}}/api/games"
+          }
+        },
+        {
+          "name": "Get all games",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "pm.test('200 OK', () => pm.response.to.have.status(200));",
+            "pm.test('includes the created game', () => pm.expect(pm.response.json().map(g => g.id)).to.include(Number(pm.collectionVariables.get('gameId'))));"
+          ] } }],
+          "request": { "method": "GET", "header": [], "url": "{{catalogUrl}}/api/games" }
+        },
+        {
+          "name": "Get games awaiting approval (status=PENDING)",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "pm.test('200 OK', () => pm.response.to.have.status(200));",
+            "const games = pm.response.json();",
+            "pm.test('only PENDING games', () => games.forEach(g => pm.expect(g.approvalStatus).to.eql('PENDING')));",
+            "pm.test('includes the created game', () => pm.expect(games.map(g => g.id)).to.include(Number(pm.collectionVariables.get('gameId'))));"
+          ] } }],
+          "request": { "method": "GET", "header": [], "url": "{{catalogUrl}}/api/games?status=PENDING" }
+        },
+        {
+          "name": "Get game by id",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "pm.test('200 OK', () => pm.response.to.have.status(200));",
+            "pm.test('returns the right game', () => pm.expect(pm.response.json().id).to.eql(Number(pm.collectionVariables.get('gameId'))));"
+          ] } }],
+          "request": { "method": "GET", "header": [], "url": "{{catalogUrl}}/api/games/{{gameId}}" }
+        },
+        {
+          "name": "Get game - unknown id (404)",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "pm.test('404 Not Found', () => pm.response.to.have.status(404));"
+          ] } }],
+          "request": { "method": "GET", "header": [], "url": "{{catalogUrl}}/api/games/999999" }
+        },
+        {
+          "name": "Approve game",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "pm.test('200 OK', () => pm.response.to.have.status(200));",
+            "pm.test('status is APPROVED', () => pm.expect(pm.response.json().approvalStatus).to.eql('APPROVED'));"
+          ] } }],
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"title\": \"Circuit Breaker {{suffix}}\",\n  \"description\": \"Puzzle game about logic gates\",\n  \"genre\": \"Puzzle\",\n  \"playableUrl\": \"https://example.com/circuit-breaker\",\n  \"creatorId\": {{userId}},\n  \"approvalStatus\": \"APPROVED\"\n}" },
+            "url": "{{catalogUrl}}/api/games/{{gameId}}"
+          }
+        },
+        {
+          "name": "Get approved games (status=APPROVED)",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "pm.test('200 OK', () => pm.response.to.have.status(200));",
+            "pm.test('includes the approved game', () => pm.expect(pm.response.json().map(g => g.id)).to.include(Number(pm.collectionVariables.get('gameId'))));"
+          ] } }],
+          "request": { "method": "GET", "header": [], "url": "{{catalogUrl}}/api/games?status=APPROVED" }
+        }
+      ]
+    },
+    {
+      "name": "4. engagement-service",
+      "item": [
+        {
+          "name": "React to game (LIKE)",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "pm.test('201 Created', () => pm.response.to.have.status(201));",
+            "const r = pm.response.json();",
+            "pm.test('stores the reaction', () => pm.expect(r.type).to.eql('LIKE'));",
+            "pm.collectionVariables.set('reactionId', r.id);"
+          ] } }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"userId\": {{userId}},\n  \"gameId\": {{gameId}},\n  \"type\": \"LIKE\"\n}" },
+            "url": "{{engagementUrl}}/api/reactions"
+          }
+        },
+        {
+          "name": "React to game - duplicate (409)",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "pm.test('409 Conflict', () => pm.response.to.have.status(409));"
+          ] } }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"userId\": {{userId}},\n  \"gameId\": {{gameId}},\n  \"type\": \"DISLIKE\"\n}" },
+            "url": "{{engagementUrl}}/api/reactions"
+          }
+        },
+        {
+          "name": "React to game - invalid type (400)",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "pm.test('400 Bad Request', () => pm.response.to.have.status(400));"
+          ] } }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"userId\": 987654,\n  \"gameId\": {{gameId}},\n  \"type\": \"MEH\"\n}" },
+            "url": "{{engagementUrl}}/api/reactions"
+          }
+        },
+        {
+          "name": "Get reactions for game",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "pm.test('200 OK', () => pm.response.to.have.status(200));",
+            "pm.test('includes our reaction', () => pm.expect(pm.response.json().map(r => r.id)).to.include(Number(pm.collectionVariables.get('reactionId'))));"
+          ] } }],
+          "request": { "method": "GET", "header": [], "url": "{{engagementUrl}}/api/reactions?gameId={{gameId}}" }
+        },
+        {
+          "name": "Change reaction to DISLIKE",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "pm.test('200 OK', () => pm.response.to.have.status(200));",
+            "pm.test('type updated', () => pm.expect(pm.response.json().type).to.eql('DISLIKE'));"
+          ] } }],
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"userId\": {{userId}},\n  \"gameId\": {{gameId}},\n  \"type\": \"DISLIKE\"\n}" },
+            "url": "{{engagementUrl}}/api/reactions/{{reactionId}}"
+          }
+        },
+        {
+          "name": "Add game to library",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "pm.test('201 Created', () => pm.response.to.have.status(201));",
+            "pm.test('has addedAt', () => pm.expect(pm.response.json().addedAt).to.be.a('string'));"
+          ] } }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"userId\": {{userId}},\n  \"gameId\": {{gameId}}\n}" },
+            "url": "{{engagementUrl}}/api/library"
+          }
+        },
+        {
+          "name": "Add game to library - duplicate (409)",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "pm.test('409 Conflict', () => pm.response.to.have.status(409));"
+          ] } }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"userId\": {{userId}},\n  \"gameId\": {{gameId}}\n}" },
+            "url": "{{engagementUrl}}/api/library"
+          }
+        },
+        {
+          "name": "Get user's library",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "pm.test('200 OK', () => pm.response.to.have.status(200));",
+            "pm.test('contains the game', () => pm.expect(pm.response.json().map(e => e.gameId)).to.include(Number(pm.collectionVariables.get('gameId'))));"
+          ] } }],
+          "request": { "method": "GET", "header": [], "url": "{{engagementUrl}}/api/library/{{userId}}" }
+        },
+        {
+          "name": "Post comment",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "pm.test('201 Created', () => pm.response.to.have.status(201));",
+            "pm.collectionVariables.set('commentId', pm.response.json().id);"
+          ] } }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"userId\": {{userId}},\n  \"gameId\": {{gameId}},\n  \"body\": \"Great logic puzzle!\"\n}" },
+            "url": "{{engagementUrl}}/api/comments"
+          }
+        },
+        {
+          "name": "Post comment - blank body (400)",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "pm.test('400 Bad Request', () => pm.response.to.have.status(400));"
+          ] } }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"userId\": {{userId}},\n  \"gameId\": {{gameId}},\n  \"body\": \"\"\n}" },
+            "url": "{{engagementUrl}}/api/comments"
+          }
+        },
+        {
+          "name": "Get comments for game",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "pm.test('200 OK', () => pm.response.to.have.status(200));",
+            "pm.test('includes our comment', () => pm.expect(pm.response.json().map(c => c.id)).to.include(Number(pm.collectionVariables.get('commentId'))));"
+          ] } }],
+          "request": { "method": "GET", "header": [], "url": "{{engagementUrl}}/api/comments?gameId={{gameId}}" }
+        },
+        {
+          "name": "Edit comment",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "pm.test('200 OK', () => pm.response.to.have.status(200));",
+            "pm.test('body updated', () => pm.expect(pm.response.json().body).to.eql('Edited: took me three tries.'));"
+          ] } }],
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"userId\": {{userId}},\n  \"gameId\": {{gameId}},\n  \"body\": \"Edited: took me three tries.\"\n}" },
+            "url": "{{engagementUrl}}/api/comments/{{commentId}}"
+          }
+        }
+      ]
+    },
+    {
+      "name": "5. Cleanup",
+      "item": [
+        {
+          "name": "Delete comment",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "pm.test('204 No Content', () => pm.response.to.have.status(204));"
+          ] } }],
+          "request": { "method": "DELETE", "header": [], "url": "{{engagementUrl}}/api/comments/{{commentId}}" }
+        },
+        {
+          "name": "Delete comment - already gone (404)",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "pm.test('404 Not Found', () => pm.response.to.have.status(404));"
+          ] } }],
+          "request": { "method": "DELETE", "header": [], "url": "{{engagementUrl}}/api/comments/{{commentId}}" }
+        },
+        {
+          "name": "Remove game from library",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "pm.test('204 No Content', () => pm.response.to.have.status(204));"
+          ] } }],
+          "request": { "method": "DELETE", "header": [], "url": "{{engagementUrl}}/api/library/{{userId}}/{{gameId}}" }
+        },
+        {
+          "name": "Delete reaction",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "pm.test('204 No Content', () => pm.response.to.have.status(204));"
+          ] } }],
+          "request": { "method": "DELETE", "header": [], "url": "{{engagementUrl}}/api/reactions/{{reactionId}}" }
+        },
+        {
+          "name": "Delete game",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "pm.test('204 No Content', () => pm.response.to.have.status(204));"
+          ] } }],
+          "request": { "method": "DELETE", "header": [], "url": "{{catalogUrl}}/api/games/{{gameId}}" }
+        },
+        {
+          "name": "Delete user",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "pm.test('204 No Content', () => pm.response.to.have.status(204));"
+          ] } }],
+          "request": { "method": "DELETE", "header": [], "url": "{{identityUrl}}/api/users/{{userId}}" }
+        },
+        {
+          "name": "Get deleted user (404)",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "pm.test('404 Not Found', () => pm.response.to.have.status(404));",
+            "pm.collectionVariables.unset('suffix');"
+          ] } }],
+          "request": { "method": "GET", "header": [], "url": "{{identityUrl}}/api/users/{{userId}}" }
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,121 @@
+name: cool-engineering-games
+
+services:
+
+  configserver:
+    build:
+      context: ../configserver
+      args:
+        JAR_FILE: target/configserver-1.0-SNAPSHOT.jar
+    ports:
+      - "8888:8888"
+    healthcheck:
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/localhost/8888 && printf 'GET /identity-service/prod HTTP/1.0\\r\\n\\r\\n' >&3 && head -n1 <&3 | grep -q 200"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 5s
+
+  identity-db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: identity
+      POSTGRES_USER: identity
+      POSTGRES_PASSWORD: identity
+    volumes:
+      - identity-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U identity -d identity"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  catalog-db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: catalog
+      POSTGRES_USER: catalog
+      POSTGRES_PASSWORD: catalog
+    volumes:
+      - catalog-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U catalog -d catalog"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  engagement-db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: engagement
+      POSTGRES_USER: engagement
+      POSTGRES_PASSWORD: engagement
+    volumes:
+      - engagement-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U engagement -d engagement"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  identity-service:
+    build:
+      context: ../identity-service
+      args:
+        JAR_FILE: target/identity-service-1.0-SNAPSHOT.jar
+    depends_on:
+      configserver:
+        condition: service_healthy
+      identity-db:
+        condition: service_healthy
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
+      CONFIG_SERVER_URL: http://configserver:8888
+      SPRING_DATASOURCE_URL: jdbc:postgresql://identity-db:5432/identity
+      SPRING_DATASOURCE_USERNAME: identity
+      SPRING_DATASOURCE_PASSWORD: identity
+    ports:
+      - "8081:8081"
+
+  game-catalog-service:
+    build:
+      context: ../game-catalog-service
+      args:
+        JAR_FILE: target/game-catalog-service-1.0-SNAPSHOT.jar
+    depends_on:
+      configserver:
+        condition: service_healthy
+      catalog-db:
+        condition: service_healthy
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
+      CONFIG_SERVER_URL: http://configserver:8888
+      SPRING_DATASOURCE_URL: jdbc:postgresql://catalog-db:5432/catalog
+      SPRING_DATASOURCE_USERNAME: catalog
+      SPRING_DATASOURCE_PASSWORD: catalog
+    ports:
+      - "8082:8082"
+
+  engagement-service:
+    build:
+      context: ../engagement-service
+      args:
+        JAR_FILE: target/engagement-service-1.0-SNAPSHOT.jar
+    depends_on:
+      configserver:
+        condition: service_healthy
+      engagement-db:
+        condition: service_healthy
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
+      CONFIG_SERVER_URL: http://configserver:8888
+      SPRING_DATASOURCE_URL: jdbc:postgresql://engagement-db:5432/engagement
+      SPRING_DATASOURCE_USERNAME: engagement
+      SPRING_DATASOURCE_PASSWORD: engagement
+    ports:
+      - "8083:8083"
+
+volumes:
+  identity-db-data:
+  catalog-db-data:
+  engagement-db-data:
