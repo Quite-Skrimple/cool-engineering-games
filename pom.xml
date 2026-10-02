@@ -19,9 +19,9 @@
     </properties>
 
     <modules>
-        <!-- <module>configserver</module>
-        <module>engegement-service</module>
-        <module>game-catalog-service</module> -->
+        <module>configserver</module>
+        <module>engagement-service</module>
+        <module>game-catalog-service</module>
         <module>identity-service</module>
     </modules>
 
