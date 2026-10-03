@@ -2,6 +2,8 @@
 
 A CoolMathGames-style arcade of short, engineering-themed browser games, built as a set of cloud-native microservices.
 
+> **Phase 1 deliverables:** this README (deploy/run instructions below), the Postman collection + environment in [`postman/`](postman/), and the presentation script in [`docs/VIDEO_SCRIPT.md`](docs/VIDEO_SCRIPT.md).
+
 ## Services
 
 | Service | Port | Owns | Status |
@@ -12,6 +14,28 @@ A CoolMathGames-style arcade of short, engineering-themed browser games, built a
 | `configserver` | 8888 | Centralized `dev` / `prod` configuration | Built |
 
 Each service is its own Maven module with its own 3-layer stack (entity → repository → service → controller) and its own database — no shared tables across services.
+
+## Canonical data model & bounded contexts
+
+Each microservice owns one bounded context and one schema. There are no shared tables and no cross-service foreign keys — a service that needs to reference another context's data (e.g. a game's `creatorId`, a comment's `userId`) stores the plain numeric id and nothing else. Consistency across services is eventual and enforced at the REST boundary, not with database joins.
+
+| Service | Entity | Key fields | Notes |
+|---|---|---|---|
+| `identity-service` | `User` | `id`, `username` (unique), `email` (unique), `passwordHash`, `role` (`PLAYER`/`DEVELOPER`/`ADMIN`), `createdAt`, `updatedAt` | Source of truth for accounts. Passwords are hashed server-side and never returned by the API. |
+| `game-catalog-service` | `Game` | `id`, `title`, `description`, `genre`, `playableUrl`, `creatorId` (→ `User.id`, by value only), `approvalStatus` (`PENDING`/`APPROVED`/`REJECTED`), `createdAt`, `updatedAt` | Owns the submission/approval workflow for creator-submitted games. |
+| `engagement-service` | `Reaction` | `id`, `userId`, `gameId`, `type` (`LIKE`/`DISLIKE`), `createdAt`, `updatedAt` | One reaction per `(userId, gameId)` pair (unique constraint); re-reacting updates it. |
+| `engagement-service` | `LibraryEntry` | `id`, `userId`, `gameId`, `addedAt` | A player's saved-games list; one entry per `(userId, gameId)` pair. |
+| `engagement-service` | `Comment` | `id`, `userId`, `gameId`, `body`, `createdAt`, `updatedAt` | Free-text comments on a game. |
+
+`engagement-service` bundles three entities because they share one concern — a player's engagement with a game — and are always read/written together in that context; they still live in one schema with no FKs to `identity-service` or `game-catalog-service`.
+
+## Deployment architecture
+
+![Deployment architecture](docs/architecture.svg)
+
+- **`prod`** (top half of the diagram): everything runs in the `cool-engineering-games` Docker network. Each service has its own Postgres container and waits on both `configserver` and its database to report healthy before starting.
+- **`dev`** (bottom half): each service runs standalone on the host JVM against its own in-memory H2 database; pulling config from `configserver` is attempted but optional.
+- In both profiles, the three business services never call each other directly — all cross-service reads (e.g. "does this user exist") happen at the client/Postman layer, consistent with the bounded-context boundaries above.
 
 ## Requirements
 
@@ -78,13 +102,15 @@ Repository tests (`@DataJpaTest`) run the real Flyway migrations on H2 and then 
 
 ## Postman
 
-Import `postman/cool-engineering-games.postman_collection.json` into Postman (Import → File). It has 38 requests with 65 assertions covering every endpoint of every service, including the error paths (400 / 404 / 409), and a Cleanup folder at the end so it can be re-run. Start the services first (either run mode above), then run the whole collection top to bottom with the Collection Runner. The base URLs are collection variables (`identityUrl`, `catalogUrl`, `engagementUrl`, `configUrl`).
+Import both `postman/cool-engineering-games.postman_collection.json` and `postman/cool-engineering-games.postman_environment.json` into Postman (Import → File, select both), then pick the **Cool Engineering Games - Local** environment in the top-right dropdown. The collection has 38 requests with 65 assertions covering every endpoint of every service, including the error paths (400 / 404 / 409), and a Cleanup folder at the end so it can be re-run. Start the services first (either run mode above), then run the whole collection top to bottom with the Collection Runner. The base URLs are variables (`identityUrl`, `catalogUrl`, `engagementUrl`, `configUrl`) so they work unchanged against either profile — `dev` and `prod` expose the same ports.
 
 From the command line with [Newman](https://www.npmjs.com/package/newman):
 
 ```bash
-npx newman run postman/cool-engineering-games.postman_collection.json
+npx newman run postman/cool-engineering-games.postman_collection.json -e postman/cool-engineering-games.postman_environment.json
 ```
+
+To submit this as a shareable **Postman Workspace** link rather than just the two files: in Postman, create a new workspace, import both files into it, then Workspace → Share → copy the invite/public link.
 
 ## Troubleshooting
 
