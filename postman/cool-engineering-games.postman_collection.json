@@ -1,14 +1,28 @@
 {
   "info": {
     "name": "Cool Engineering Games",
-    "description": "CRUD tests for identity-service (8081), game-catalog-service (8082), engagement-service (8083) and configserver (8888). Run the whole collection top to bottom: later requests reuse ids saved by earlier ones, and the final Cleanup folder deletes everything it created, so it can be re-run.",
+    "description": "Phase 2 tests. Every request goes through the gateway (gatewayUrl). Run the whole collection top to bottom with the Collection Runner: later requests reuse tokens and ids saved by earlier ones, and the Cleanup folder deletes everything the run created, so it can be repeated.\n\nSet adminPassword in the environment to the BOOTSTRAP_ADMIN_PASSWORD from docker/.env. The password-reminder folder reads the reset email from Mailpit (mailUrl).",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{playerToken}}",
+        "type": "string"
+      }
+    ]
+  },
   "variable": [
-    { "key": "identityUrl", "value": "http://localhost:8081" },
-    { "key": "catalogUrl", "value": "http://localhost:8082" },
-    { "key": "engagementUrl", "value": "http://localhost:8083" },
-    { "key": "configUrl", "value": "http://localhost:8888" }
+    {
+      "key": "password",
+      "value": "password123"
+    },
+    {
+      "key": "newPassword",
+      "value": "brand-new-pass-1"
+    }
   ],
   "event": [
     {
@@ -16,8 +30,14 @@
       "script": {
         "type": "text/javascript",
         "exec": [
+          "// one unique suffix per run keeps usernames and emails from colliding between runs",
           "if (!pm.collectionVariables.get('suffix')) {",
-          "  pm.collectionVariables.set('suffix', String(Date.now()));",
+          "  const s = String(Date.now());",
+          "  pm.collectionVariables.set('suffix', s);",
+          "  pm.collectionVariables.set('playerUsername', 'player' + s);",
+          "  pm.collectionVariables.set('playerEmail', 'player' + s + '@arizona.edu');",
+          "  pm.collectionVariables.set('otherUsername', 'other' + s);",
+          "  pm.collectionVariables.set('otherEmail', 'other' + s + '@arizona.edu');",
           "}"
         ]
       }
@@ -25,421 +45,2960 @@
   ],
   "item": [
     {
-      "name": "1. configserver",
+      "name": "1. Authentication and registration",
       "item": [
         {
-          "name": "Get identity-service dev config",
-          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
-            "pm.test('200 OK', () => pm.response.to.have.status(200));",
-            "const body = pm.response.json();",
-            "pm.test('serves the dev profile', () => pm.expect(body.profiles).to.include('dev'));",
-            "pm.test('dev uses H2', () => pm.expect(JSON.stringify(body.propertySources)).to.include('jdbc:h2:mem'));"
-          ] } }],
-          "request": { "method": "GET", "header": [], "url": "{{configUrl}}/identity-service/dev" }
+          "name": "Register a player",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201', () => pm.response.to.have.status(201));",
+                  "const u = pm.response.json();",
+                  "pm.test('is a PLAYER and ACTIVE', () => { pm.expect(u.role).to.eql('PLAYER'); pm.expect(u.status).to.eql('ACTIVE'); });",
+                  "pm.test('the password is never returned', () => { pm.expect(u).to.not.have.property('password'); pm.expect(u).to.not.have.property('passwordHash'); });",
+                  "pm.collectionVariables.set('playerId', u.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{gatewayUrl}}/api/auth/register",
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"{{playerUsername}}\",\n  \"email\": \"{{playerEmail}}\",\n  \"password\": \"{{password}}\"\n}"
+            }
+          }
         },
         {
-          "name": "Get identity-service prod config",
-          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
-            "pm.test('200 OK', () => pm.response.to.have.status(200));",
-            "const body = pm.response.json();",
-            "pm.test('serves the prod profile', () => pm.expect(body.profiles).to.include('prod'));",
-            "pm.test('prod uses Postgres', () => pm.expect(JSON.stringify(body.propertySources)).to.include('jdbc:postgresql'));"
-          ] } }],
-          "request": { "method": "GET", "header": [], "url": "{{configUrl}}/identity-service/prod" }
+          "name": "Register a second player",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201', () => pm.response.to.have.status(201));",
+                  "pm.collectionVariables.set('otherId', pm.response.json().id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{gatewayUrl}}/api/auth/register",
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"{{otherUsername}}\",\n  \"email\": \"{{otherEmail}}\",\n  \"password\": \"{{password}}\"\n}"
+            }
+          }
         },
         {
-          "name": "Get game-catalog-service dev config",
-          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
-            "pm.test('200 OK', () => pm.response.to.have.status(200));",
-            "pm.test('has a property source', () => pm.expect(pm.response.json().propertySources.length).to.be.above(0));"
-          ] } }],
-          "request": { "method": "GET", "header": [], "url": "{{configUrl}}/game-catalog-service/dev" }
+          "name": "Register - the role cannot be chosen",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201', () => pm.response.to.have.status(201));",
+                  "pm.test('still a PLAYER', () => pm.expect(pm.response.json().role).to.eql('PLAYER'));",
+                  "pm.collectionVariables.set('sneakyId', pm.response.json().id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{gatewayUrl}}/api/auth/register",
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"sneaky{{suffix}}\",\n  \"email\": \"sneaky{{suffix}}@arizona.edu\",\n  \"password\": \"{{password}}\",\n  \"role\": \"ADMIN\"\n}"
+            }
+          }
         },
         {
-          "name": "Get engagement-service dev config",
-          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
-            "pm.test('200 OK', () => pm.response.to.have.status(200));",
-            "pm.test('has a property source', () => pm.expect(pm.response.json().propertySources.length).to.be.above(0));"
-          ] } }],
-          "request": { "method": "GET", "header": [], "url": "{{configUrl}}/engagement-service/dev" }
+          "name": "Register - duplicate username (409)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('409', () => pm.response.to.have.status(409));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{gatewayUrl}}/api/auth/register",
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"{{playerUsername}}\",\n  \"email\": \"another{{suffix}}@arizona.edu\",\n  \"password\": \"{{password}}\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Register - invalid input (400)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('400', () => pm.response.to.have.status(400));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{gatewayUrl}}/api/auth/register",
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"x\",\n  \"email\": \"not-an-email\",\n  \"password\": \"short\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Login - wrong password (401)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('401', () => pm.response.to.have.status(401));",
+                  "pm.collectionVariables.set('wrongPasswordBody', pm.response.text());"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{gatewayUrl}}/api/auth/login",
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"{{playerUsername}}\",\n  \"password\": \"wrong-password\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Login - unknown user looks identical (401)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('401', () => pm.response.to.have.status(401));",
+                  "pm.test('same answer as a wrong password, so usernames cannot be probed', () => pm.expect(pm.response.text()).to.eql(pm.collectionVariables.get('wrongPasswordBody')));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{gatewayUrl}}/api/auth/login",
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"nobody{{suffix}}\",\n  \"password\": \"wrong-password\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Login as the player",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "const r = pm.response.json();",
+                  "pm.test('returns a bearer token', () => { pm.expect(r.tokenType).to.eql('Bearer'); pm.expect(r.accessToken).to.be.a('string'); pm.expect(r.expiresIn).to.eql(3600); });",
+                  "function decodeJwt(t) {",
+                  "  const p = t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');",
+                  "  const text = (typeof atob === 'function') ? atob(p) : Buffer.from(p, 'base64').toString('utf8');",
+                  "  return JSON.parse(text);",
+                  "}",
+                  "const claims = decodeJwt(r.accessToken);",
+                  "pm.test('the token names the user and role', () => { pm.expect(claims.sub).to.eql(String(pm.collectionVariables.get('playerId'))); pm.expect(claims.roles).to.eql(['PLAYER']); });",
+                  "pm.collectionVariables.set('playerToken', r.accessToken);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{gatewayUrl}}/api/auth/login",
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"{{playerUsername}}\",\n  \"password\": \"{{password}}\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Login as the second player",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 (login with an email address works too)', () => pm.response.to.have.status(200));",
+                  "pm.collectionVariables.set('otherToken', pm.response.json().accessToken);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{gatewayUrl}}/api/auth/login",
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"{{otherEmail}}\",\n  \"password\": \"{{password}}\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Who am I",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "pm.test('is the logged-in player', () => pm.expect(pm.response.json().username).to.eql(pm.collectionVariables.get('playerUsername')));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{gatewayUrl}}/api/users/me",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{playerToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "No token (401)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('401', () => pm.response.to.have.status(401));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{gatewayUrl}}/api/users/me",
+            "auth": {
+              "type": "noauth"
+            }
+          }
+        },
+        {
+          "name": "Tampered token (401)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('401', () => pm.response.to.have.status(401));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{gatewayUrl}}/api/users/me",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{playerToken}}tampered",
+                  "type": "string"
+                }
+              ]
+            }
+          }
         }
       ]
     },
     {
-      "name": "2. identity-service",
+      "name": "2. Authorization (roles)",
       "item": [
         {
-          "name": "Create user",
-          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
-            "pm.test('201 Created', () => pm.response.to.have.status(201));",
-            "const user = pm.response.json();",
-            "pm.test('has an id and the requested fields', () => {",
-            "  pm.expect(user.id).to.be.a('number');",
-            "  pm.expect(user.username).to.eql('player' + pm.collectionVariables.get('suffix'));",
-            "  pm.expect(user.role).to.eql('PLAYER');",
-            "});",
-            "pm.test('password is never returned', () => {",
-            "  pm.expect(user).to.not.have.property('password');",
-            "  pm.expect(user).to.not.have.property('passwordHash');",
-            "});",
-            "pm.collectionVariables.set('userId', user.id);"
-          ] } }],
+          "name": "Player cannot list users (403)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('403', () => pm.response.to.have.status(403));"
+                ]
+              }
+            }
+          ],
           "request": {
-            "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
-            "body": { "mode": "raw", "raw": "{\n  \"username\": \"player{{suffix}}\",\n  \"email\": \"player{{suffix}}@arizona.edu\",\n  \"password\": \"password123\",\n  \"role\": \"PLAYER\"\n}" },
-            "url": "{{identityUrl}}/api/users"
+            "method": "GET",
+            "header": [],
+            "url": "{{gatewayUrl}}/api/users",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{playerToken}}",
+                  "type": "string"
+                }
+              ]
+            }
           }
         },
         {
-          "name": "Create user - duplicate username (409)",
-          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
-            "pm.test('409 Conflict', () => pm.response.to.have.status(409));",
-            "pm.test('names the clashing username', () => pm.expect(pm.response.text()).to.include('Username already in use'));"
-          ] } }],
+          "name": "Player cannot submit a game (403)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('403', () => pm.response.to.have.status(403));"
+                ]
+              }
+            }
+          ],
           "request": {
             "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
-            "body": { "mode": "raw", "raw": "{\n  \"username\": \"player{{suffix}}\",\n  \"email\": \"other{{suffix}}@arizona.edu\",\n  \"password\": \"password123\",\n  \"role\": \"PLAYER\"\n}" },
-            "url": "{{identityUrl}}/api/users"
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{gatewayUrl}}/api/games",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{playerToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Nope\",\n  \"genre\": \"Puzzle\",\n  \"playableUrl\": \"https://example.com/nope\"\n}"
+            }
           }
         },
         {
-          "name": "Create user - invalid body (400)",
-          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
-            "pm.test('400 Bad Request', () => pm.response.to.have.status(400));"
-          ] } }],
+          "name": "Player cannot read another user's account (403)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('403', () => pm.response.to.have.status(403));"
+                ]
+              }
+            }
+          ],
           "request": {
-            "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
-            "body": { "mode": "raw", "raw": "{\n  \"username\": \"x\",\n  \"email\": \"not-an-email\",\n  \"password\": \"short\",\n  \"role\": \"PLAYER\"\n}" },
-            "url": "{{identityUrl}}/api/users"
+            "method": "GET",
+            "header": [],
+            "url": "{{gatewayUrl}}/api/users/{{otherId}}",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{playerToken}}",
+                  "type": "string"
+                }
+              ]
+            }
           }
         },
         {
-          "name": "Get all users",
-          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
-            "pm.test('200 OK', () => pm.response.to.have.status(200));",
-            "pm.test('includes the created user', () => {",
-            "  const ids = pm.response.json().map(u => u.id);",
-            "  pm.expect(ids).to.include(Number(pm.collectionVariables.get('userId')));",
-            "});"
-          ] } }],
-          "request": { "method": "GET", "header": [], "url": "{{identityUrl}}/api/users" }
-        },
-        {
-          "name": "Get user by id",
-          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
-            "pm.test('200 OK', () => pm.response.to.have.status(200));",
-            "pm.test('returns the right user', () => pm.expect(pm.response.json().id).to.eql(Number(pm.collectionVariables.get('userId'))));"
-          ] } }],
-          "request": { "method": "GET", "header": [], "url": "{{identityUrl}}/api/users/{{userId}}" }
-        },
-        {
-          "name": "Get user - unknown id (404)",
-          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
-            "pm.test('404 Not Found', () => pm.response.to.have.status(404));"
-          ] } }],
-          "request": { "method": "GET", "header": [], "url": "{{identityUrl}}/api/users/999999" }
-        },
-        {
-          "name": "Update user (promote to DEVELOPER)",
-          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
-            "pm.test('200 OK', () => pm.response.to.have.status(200));",
-            "pm.test('role updated', () => pm.expect(pm.response.json().role).to.eql('DEVELOPER'));"
-          ] } }],
+          "name": "Player cannot promote themselves (403)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('403', () => pm.response.to.have.status(403));"
+                ]
+              }
+            }
+          ],
           "request": {
             "method": "PUT",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
-            "body": { "mode": "raw", "raw": "{\n  \"username\": \"player{{suffix}}\",\n  \"email\": \"player{{suffix}}@arizona.edu\",\n  \"password\": \"password123\",\n  \"role\": \"DEVELOPER\"\n}" },
-            "url": "{{identityUrl}}/api/users/{{userId}}"
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{gatewayUrl}}/api/users/{{playerId}}/role",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{playerToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"role\": \"ADMIN\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Login as the administrator",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "const r = pm.response.json();",
+                  "pm.test('is an ADMIN', () => pm.expect(r.user.role).to.eql('ADMIN'));",
+                  "pm.collectionVariables.set('adminToken', r.accessToken);",
+                  "pm.collectionVariables.set('adminId', r.user.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{gatewayUrl}}/api/auth/login",
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"{{adminUsername}}\",\n  \"password\": \"{{adminPassword}}\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Administrator lists users",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "pm.test('includes the new player', () => pm.expect(pm.response.json().map(u => u.id)).to.include(Number(pm.collectionVariables.get('playerId'))));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{gatewayUrl}}/api/users",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{adminToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Administrator verifies the player as a developer",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "pm.test('role updated', () => pm.expect(pm.response.json().role).to.eql('DEVELOPER'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{gatewayUrl}}/api/users/{{playerId}}/role",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{adminToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"role\": \"DEVELOPER\"\n}"
+            }
+          }
+        },
+        {
+          "name": "The old token still says PLAYER (403)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('403 (roles live in the token until the next login)', () => pm.response.to.have.status(403));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{gatewayUrl}}/api/games",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{playerToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Too early\",\n  \"genre\": \"Puzzle\",\n  \"playableUrl\": \"https://example.com/early\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Log in again to get the developer role",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "function decodeJwt(t) {",
+                  "  const p = t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');",
+                  "  const text = (typeof atob === 'function') ? atob(p) : Buffer.from(p, 'base64').toString('utf8');",
+                  "  return JSON.parse(text);",
+                  "}",
+                  "const t = pm.response.json().accessToken;",
+                  "pm.test('the new token carries DEVELOPER', () => pm.expect(decodeJwt(t).roles).to.eql(['DEVELOPER']));",
+                  "pm.collectionVariables.set('devToken', t);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{gatewayUrl}}/api/auth/login",
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"{{playerUsername}}\",\n  \"password\": \"{{password}}\"\n}"
+            }
           }
         }
       ]
     },
     {
-      "name": "3. game-catalog-service",
+      "name": "3. Game catalog",
       "item": [
         {
-          "name": "Create game",
-          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
-            "pm.test('201 Created', () => pm.response.to.have.status(201));",
-            "const game = pm.response.json();",
-            "pm.test('new games start as PENDING', () => pm.expect(game.approvalStatus).to.eql('PENDING'));",
-            "pm.test('linked to the creator', () => pm.expect(game.creatorId).to.eql(Number(pm.collectionVariables.get('userId'))));",
-            "pm.collectionVariables.set('gameId', game.id);"
-          ] } }],
+          "name": "Developer submits a game",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201', () => pm.response.to.have.status(201));",
+                  "const g = pm.response.json();",
+                  "pm.test('waits for review', () => pm.expect(g.approvalStatus).to.eql('PENDING'));",
+                  "pm.test('the creator is the token user', () => pm.expect(g.creatorId).to.eql(Number(pm.collectionVariables.get('playerId'))));",
+                  "pm.collectionVariables.set('gameId', g.id);"
+                ]
+              }
+            }
+          ],
           "request": {
             "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
-            "body": { "mode": "raw", "raw": "{\n  \"title\": \"Circuit Breaker {{suffix}}\",\n  \"description\": \"Puzzle game about logic gates\",\n  \"genre\": \"Puzzle\",\n  \"playableUrl\": \"https://example.com/circuit-breaker\",\n  \"creatorId\": {{userId}}\n}" },
-            "url": "{{catalogUrl}}/api/games"
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{gatewayUrl}}/api/games",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{devToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Circuit Breaker {{suffix}}\",\n  \"description\": \"Puzzle game about logic gates\",\n  \"genre\": \"Puzzle\",\n  \"playableUrl\": \"https://example.com/circuit-breaker\"\n}"
+            }
           }
         },
         {
-          "name": "Create game - invalid body (400)",
-          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
-            "pm.test('400 Bad Request', () => pm.response.to.have.status(400));"
-          ] } }],
+          "name": "Developer submits a second game",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201', () => pm.response.to.have.status(201));",
+                  "pm.collectionVariables.set('pendingGameId', pm.response.json().id);"
+                ]
+              }
+            }
+          ],
           "request": {
             "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
-            "body": { "mode": "raw", "raw": "{\n  \"title\": \"\",\n  \"genre\": \"Puzzle\",\n  \"playableUrl\": \"https://example.com/x\",\n  \"creatorId\": 1\n}" },
-            "url": "{{catalogUrl}}/api/games"
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{gatewayUrl}}/api/games",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{devToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Truss Tower {{suffix}}\",\n  \"description\": \"Puzzle game about logic gates\",\n  \"genre\": \"Puzzle\",\n  \"playableUrl\": \"https://example.com/circuit-breaker\"\n}"
+            }
           }
         },
         {
-          "name": "Get all games",
-          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
-            "pm.test('200 OK', () => pm.response.to.have.status(200));",
-            "pm.test('includes the created game', () => pm.expect(pm.response.json().map(g => g.id)).to.include(Number(pm.collectionVariables.get('gameId'))));"
-          ] } }],
-          "request": { "method": "GET", "header": [], "url": "{{catalogUrl}}/api/games" }
+          "name": "A creator cannot choose the creator or status",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201', () => pm.response.to.have.status(201));",
+                  "const g = pm.response.json();",
+                  "pm.test('creator and status come from the platform', () => { pm.expect(g.creatorId).to.eql(Number(pm.collectionVariables.get('playerId'))); pm.expect(g.approvalStatus).to.eql('PENDING'); });",
+                  "pm.collectionVariables.set('spoofGameId', g.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{gatewayUrl}}/api/games",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{devToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Spoofed {{suffix}}\",\n  \"genre\": \"Puzzle\",\n  \"playableUrl\": \"https://example.com/x\",\n  \"creatorId\": 999999,\n  \"approvalStatus\": \"APPROVED\"\n}"
+            }
+          }
         },
         {
-          "name": "Get games awaiting approval (status=PENDING)",
-          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
-            "pm.test('200 OK', () => pm.response.to.have.status(200));",
-            "const games = pm.response.json();",
-            "pm.test('only PENDING games', () => games.forEach(g => pm.expect(g.approvalStatus).to.eql('PENDING')));",
-            "pm.test('includes the created game', () => pm.expect(games.map(g => g.id)).to.include(Number(pm.collectionVariables.get('gameId'))));"
-          ] } }],
-          "request": { "method": "GET", "header": [], "url": "{{catalogUrl}}/api/games?status=PENDING" }
+          "name": "A pending game is hidden from other players (404)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('404', () => pm.response.to.have.status(404));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{gatewayUrl}}/api/games/{{gameId}}",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{otherToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          }
         },
         {
-          "name": "Get game by id",
-          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
-            "pm.test('200 OK', () => pm.response.to.have.status(200));",
-            "pm.test('returns the right game', () => pm.expect(pm.response.json().id).to.eql(Number(pm.collectionVariables.get('gameId'))));"
-          ] } }],
-          "request": { "method": "GET", "header": [], "url": "{{catalogUrl}}/api/games/{{gameId}}" }
+          "name": "The public list leaves out pending games",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "pm.test('not listed', () => pm.expect(pm.response.json().map(g => g.id)).to.not.include(Number(pm.collectionVariables.get('gameId'))));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{gatewayUrl}}/api/games",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{otherToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          }
         },
         {
-          "name": "Get game - unknown id (404)",
-          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
-            "pm.test('404 Not Found', () => pm.response.to.have.status(404));"
-          ] } }],
-          "request": { "method": "GET", "header": [], "url": "{{catalogUrl}}/api/games/999999" }
+          "name": "The creator lists their own games in any state",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "pm.test('both pending games are listed', () => { const ids = pm.response.json().map(g => g.id); pm.expect(ids).to.include(Number(pm.collectionVariables.get('gameId'))); pm.expect(ids).to.include(Number(pm.collectionVariables.get('pendingGameId'))); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{gatewayUrl}}/api/games?mine=true",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{devToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          }
         },
         {
-          "name": "Approve game",
-          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
-            "pm.test('200 OK', () => pm.response.to.have.status(200));",
-            "pm.test('status is APPROVED', () => pm.expect(pm.response.json().approvalStatus).to.eql('APPROVED'));"
-          ] } }],
+          "name": "The creator cannot approve their own game (403)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('403', () => pm.response.to.have.status(403));"
+                ]
+              }
+            }
+          ],
           "request": {
             "method": "PUT",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
-            "body": { "mode": "raw", "raw": "{\n  \"title\": \"Circuit Breaker {{suffix}}\",\n  \"description\": \"Puzzle game about logic gates\",\n  \"genre\": \"Puzzle\",\n  \"playableUrl\": \"https://example.com/circuit-breaker\",\n  \"creatorId\": {{userId}},\n  \"approvalStatus\": \"APPROVED\"\n}" },
-            "url": "{{catalogUrl}}/api/games/{{gameId}}"
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{gatewayUrl}}/api/games/{{gameId}}/approval",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{devToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"APPROVED\"\n}"
+            }
           }
         },
         {
-          "name": "Get approved games (status=APPROVED)",
-          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
-            "pm.test('200 OK', () => pm.response.to.have.status(200));",
-            "pm.test('includes the approved game', () => pm.expect(pm.response.json().map(g => g.id)).to.include(Number(pm.collectionVariables.get('gameId'))));"
-          ] } }],
-          "request": { "method": "GET", "header": [], "url": "{{catalogUrl}}/api/games?status=APPROVED" }
+          "name": "Administrator approves the game",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "pm.test('approved', () => pm.expect(pm.response.json().approvalStatus).to.eql('APPROVED'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{gatewayUrl}}/api/games/{{gameId}}/approval",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{adminToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"APPROVED\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Players now see the approved game",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "pm.test('approved', () => pm.expect(pm.response.json().approvalStatus).to.eql('APPROVED'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{gatewayUrl}}/api/games/{{gameId}}",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{otherToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Another player cannot edit someone else's game (403)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('403', () => pm.response.to.have.status(403));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{gatewayUrl}}/api/games/{{gameId}}",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{otherToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Hijacked\",\n  \"description\": \"Puzzle game about logic gates\",\n  \"genre\": \"Puzzle\",\n  \"playableUrl\": \"https://example.com/circuit-breaker\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Editing an approved game sends it back for review",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "pm.test('PENDING again', () => pm.expect(pm.response.json().approvalStatus).to.eql('PENDING'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{gatewayUrl}}/api/games/{{gameId}}",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{devToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Circuit Breaker v2 {{suffix}}\",\n  \"description\": \"Puzzle game about logic gates\",\n  \"genre\": \"Puzzle\",\n  \"playableUrl\": \"https://example.com/circuit-breaker\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Administrator approves it again",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{gatewayUrl}}/api/games/{{gameId}}/approval",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{adminToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"APPROVED\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Invalid game (400)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('400', () => pm.response.to.have.status(400));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{gatewayUrl}}/api/games",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{devToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"\",\n  \"genre\": \"Puzzle\",\n  \"playableUrl\": \"https://example.com/x\"\n}"
+            }
+          }
         }
       ]
     },
     {
-      "name": "4. engagement-service",
+      "name": "4. Bearer token across services (engagement calls the catalog)",
       "item": [
         {
-          "name": "React to game (LIKE)",
-          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
-            "pm.test('201 Created', () => pm.response.to.have.status(201));",
-            "const r = pm.response.json();",
-            "pm.test('stores the reaction', () => pm.expect(r.type).to.eql('LIKE'));",
-            "pm.collectionVariables.set('reactionId', r.id);"
-          ] } }],
+          "name": "A player reacts to an approved game",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201', () => pm.response.to.have.status(201));",
+                  "const r = pm.response.json();",
+                  "pm.test('stored for the token user', () => pm.expect(r.userId).to.eql(Number(pm.collectionVariables.get('otherId'))));",
+                  "pm.collectionVariables.set('reactionId', r.id);"
+                ]
+              }
+            }
+          ],
           "request": {
             "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
-            "body": { "mode": "raw", "raw": "{\n  \"userId\": {{userId}},\n  \"gameId\": {{gameId}},\n  \"type\": \"LIKE\"\n}" },
-            "url": "{{engagementUrl}}/api/reactions"
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{gatewayUrl}}/api/reactions",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{otherToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"gameId\": \"{{gameId}}\",\n  \"type\": \"LIKE\"\n}"
+            }
           }
         },
         {
-          "name": "React to game - duplicate (409)",
-          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
-            "pm.test('409 Conflict', () => pm.response.to.have.status(409));"
-          ] } }],
+          "name": "The user in the body is ignored",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201', () => pm.response.to.have.status(201));",
+                  "pm.test('stored for the token user, not for 999999', () => pm.expect(pm.response.json().userId).to.eql(Number(pm.collectionVariables.get('playerId'))));",
+                  "pm.collectionVariables.set('devReactionId', pm.response.json().id);"
+                ]
+              }
+            }
+          ],
           "request": {
             "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
-            "body": { "mode": "raw", "raw": "{\n  \"userId\": {{userId}},\n  \"gameId\": {{gameId}},\n  \"type\": \"DISLIKE\"\n}" },
-            "url": "{{engagementUrl}}/api/reactions"
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{gatewayUrl}}/api/reactions",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{devToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"userId\": 999999,\n  \"gameId\": \"{{gameId}}\",\n  \"type\": \"DISLIKE\"\n}"
+            }
           }
         },
         {
-          "name": "React to game - invalid type (400)",
-          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
-            "pm.test('400 Bad Request', () => pm.response.to.have.status(400));"
-          ] } }],
+          "name": "Same endpoint, same pending game: a player gets 404",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('404 (engagement forwarded the token, the catalog hides the game from this user)', () => pm.response.to.have.status(404));"
+                ]
+              }
+            }
+          ],
           "request": {
             "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
-            "body": { "mode": "raw", "raw": "{\n  \"userId\": 987654,\n  \"gameId\": {{gameId}},\n  \"type\": \"MEH\"\n}" },
-            "url": "{{engagementUrl}}/api/reactions"
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{gatewayUrl}}/api/reactions",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{otherToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"gameId\": \"{{pendingGameId}}\",\n  \"type\": \"LIKE\"\n}"
+            }
           }
         },
         {
-          "name": "Get reactions for game",
-          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
-            "pm.test('200 OK', () => pm.response.to.have.status(200));",
-            "pm.test('includes our reaction', () => pm.expect(pm.response.json().map(r => r.id)).to.include(Number(pm.collectionVariables.get('reactionId'))));"
-          ] } }],
-          "request": { "method": "GET", "header": [], "url": "{{engagementUrl}}/api/reactions?gameId={{gameId}}" }
+          "name": "Same endpoint, same pending game: an administrator gets 201",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201 (the catalog saw the administrator token and let the call through)', () => pm.response.to.have.status(201));",
+                  "pm.collectionVariables.set('adminReactionId', pm.response.json().id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{gatewayUrl}}/api/reactions",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{adminToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"gameId\": \"{{pendingGameId}}\",\n  \"type\": \"LIKE\"\n}"
+            }
+          }
         },
         {
-          "name": "Change reaction to DISLIKE",
-          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
-            "pm.test('200 OK', () => pm.response.to.have.status(200));",
-            "pm.test('type updated', () => pm.expect(pm.response.json().type).to.eql('DISLIKE'));"
-          ] } }],
+          "name": "A game cannot be reacted to twice (409)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('409', () => pm.response.to.have.status(409));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{gatewayUrl}}/api/reactions",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{otherToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"gameId\": \"{{gameId}}\",\n  \"type\": \"DISLIKE\"\n}"
+            }
+          }
+        },
+        {
+          "name": "An unknown game (404)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('404', () => pm.response.to.have.status(404));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{gatewayUrl}}/api/reactions",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{otherToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"gameId\": 999999,\n  \"type\": \"LIKE\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Invalid reaction type (400)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('400', () => pm.response.to.have.status(400));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{gatewayUrl}}/api/reactions",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{otherToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"gameId\": \"{{gameId}}\",\n  \"type\": \"MEH\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Reactions for a game",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "pm.test('both reactions listed', () => pm.expect(pm.response.json().length).to.be.at.least(2));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{gatewayUrl}}/api/reactions?gameId={{gameId}}",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{otherToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Nobody can change someone else's reaction (403)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('403', () => pm.response.to.have.status(403));"
+                ]
+              }
+            }
+          ],
           "request": {
             "method": "PUT",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
-            "body": { "mode": "raw", "raw": "{\n  \"userId\": {{userId}},\n  \"gameId\": {{gameId}},\n  \"type\": \"DISLIKE\"\n}" },
-            "url": "{{engagementUrl}}/api/reactions/{{reactionId}}"
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{gatewayUrl}}/api/reactions/{{reactionId}}",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{devToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"type\": \"DISLIKE\"\n}"
+            }
           }
         },
         {
-          "name": "Add game to library",
-          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
-            "pm.test('201 Created', () => pm.response.to.have.status(201));",
-            "pm.test('has addedAt', () => pm.expect(pm.response.json().addedAt).to.be.a('string'));"
-          ] } }],
-          "request": {
-            "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
-            "body": { "mode": "raw", "raw": "{\n  \"userId\": {{userId}},\n  \"gameId\": {{gameId}}\n}" },
-            "url": "{{engagementUrl}}/api/library"
-          }
-        },
-        {
-          "name": "Add game to library - duplicate (409)",
-          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
-            "pm.test('409 Conflict', () => pm.response.to.have.status(409));"
-          ] } }],
-          "request": {
-            "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
-            "body": { "mode": "raw", "raw": "{\n  \"userId\": {{userId}},\n  \"gameId\": {{gameId}}\n}" },
-            "url": "{{engagementUrl}}/api/library"
-          }
-        },
-        {
-          "name": "Get user's library",
-          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
-            "pm.test('200 OK', () => pm.response.to.have.status(200));",
-            "pm.test('contains the game', () => pm.expect(pm.response.json().map(e => e.gameId)).to.include(Number(pm.collectionVariables.get('gameId'))));"
-          ] } }],
-          "request": { "method": "GET", "header": [], "url": "{{engagementUrl}}/api/library/{{userId}}" }
-        },
-        {
-          "name": "Post comment",
-          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
-            "pm.test('201 Created', () => pm.response.to.have.status(201));",
-            "pm.collectionVariables.set('commentId', pm.response.json().id);"
-          ] } }],
-          "request": {
-            "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
-            "body": { "mode": "raw", "raw": "{\n  \"userId\": {{userId}},\n  \"gameId\": {{gameId}},\n  \"body\": \"Great logic puzzle!\"\n}" },
-            "url": "{{engagementUrl}}/api/comments"
-          }
-        },
-        {
-          "name": "Post comment - blank body (400)",
-          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
-            "pm.test('400 Bad Request', () => pm.response.to.have.status(400));"
-          ] } }],
-          "request": {
-            "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
-            "body": { "mode": "raw", "raw": "{\n  \"userId\": {{userId}},\n  \"gameId\": {{gameId}},\n  \"body\": \"\"\n}" },
-            "url": "{{engagementUrl}}/api/comments"
-          }
-        },
-        {
-          "name": "Get comments for game",
-          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
-            "pm.test('200 OK', () => pm.response.to.have.status(200));",
-            "pm.test('includes our comment', () => pm.expect(pm.response.json().map(c => c.id)).to.include(Number(pm.collectionVariables.get('commentId'))));"
-          ] } }],
-          "request": { "method": "GET", "header": [], "url": "{{engagementUrl}}/api/comments?gameId={{gameId}}" }
-        },
-        {
-          "name": "Edit comment",
-          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
-            "pm.test('200 OK', () => pm.response.to.have.status(200));",
-            "pm.test('body updated', () => pm.expect(pm.response.json().body).to.eql('Edited: took me three tries.'));"
-          ] } }],
+          "name": "The owner changes their reaction",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "pm.test('updated', () => pm.expect(pm.response.json().type).to.eql('DISLIKE'));"
+                ]
+              }
+            }
+          ],
           "request": {
             "method": "PUT",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
-            "body": { "mode": "raw", "raw": "{\n  \"userId\": {{userId}},\n  \"gameId\": {{gameId}},\n  \"body\": \"Edited: took me three tries.\"\n}" },
-            "url": "{{engagementUrl}}/api/comments/{{commentId}}"
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{gatewayUrl}}/api/reactions/{{reactionId}}",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{otherToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"type\": \"DISLIKE\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Add the game to my library",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201', () => pm.response.to.have.status(201));",
+                  "pm.test('belongs to the token user', () => pm.expect(pm.response.json().userId).to.eql(Number(pm.collectionVariables.get('otherId'))));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{gatewayUrl}}/api/library",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{otherToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"gameId\": \"{{gameId}}\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Add it again (409)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('409', () => pm.response.to.have.status(409));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{gatewayUrl}}/api/library",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{otherToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"gameId\": \"{{gameId}}\"\n}"
+            }
+          }
+        },
+        {
+          "name": "My library lists the game",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "pm.test('contains it', () => pm.expect(pm.response.json().map(e => e.gameId)).to.include(Number(pm.collectionVariables.get('gameId'))));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{gatewayUrl}}/api/library",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{otherToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "A library is private: another user's is empty of it",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "pm.test('does not contain it', () => pm.expect(pm.response.json().map(e => e.gameId)).to.not.include(Number(pm.collectionVariables.get('gameId'))));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{gatewayUrl}}/api/library",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{devToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Post a comment",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201', () => pm.response.to.have.status(201));",
+                  "pm.collectionVariables.set('commentId', pm.response.json().id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{gatewayUrl}}/api/comments",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{otherToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"gameId\": \"{{gameId}}\",\n  \"body\": \"Great logic puzzle!\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Blank comment (400)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('400', () => pm.response.to.have.status(400));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{gatewayUrl}}/api/comments",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{otherToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"gameId\": \"{{gameId}}\",\n  \"body\": \"\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Nobody can edit someone else's comment (403)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('403', () => pm.response.to.have.status(403));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{gatewayUrl}}/api/comments/{{commentId}}",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{devToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"body\": \"rewritten\"\n}"
+            }
+          }
+        },
+        {
+          "name": "The author edits their comment",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "pm.test('updated', () => pm.expect(pm.response.json().body).to.include('three tries'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{gatewayUrl}}/api/comments/{{commentId}}",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{otherToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"body\": \"Great logic puzzle, took me three tries.\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Comments for a game",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "pm.test('includes it', () => pm.expect(pm.response.json().map(c => c.id)).to.include(Number(pm.collectionVariables.get('commentId'))));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{gatewayUrl}}/api/comments?gameId={{gameId}}",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{devToken}}",
+                  "type": "string"
+                }
+              ]
+            }
           }
         }
       ]
     },
     {
-      "name": "5. Cleanup",
+      "name": "5. Password reminder",
       "item": [
         {
-          "name": "Delete comment",
-          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
-            "pm.test('204 No Content', () => pm.response.to.have.status(204));"
-          ] } }],
-          "request": { "method": "DELETE", "header": [], "url": "{{engagementUrl}}/api/comments/{{commentId}}" }
+          "name": "Empty the Mailpit inbox",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": "{{mailUrl}}/api/v1/messages",
+            "auth": {
+              "type": "noauth"
+            }
+          }
         },
         {
-          "name": "Delete comment - already gone (404)",
-          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
-            "pm.test('404 Not Found', () => pm.response.to.have.status(404));"
-          ] } }],
-          "request": { "method": "DELETE", "header": [], "url": "{{engagementUrl}}/api/comments/{{commentId}}" }
+          "name": "Forgot password - unknown address (202)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('202', () => pm.response.to.have.status(202));",
+                  "pm.collectionVariables.set('unknownResetBody', pm.response.text());"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{gatewayUrl}}/api/auth/forgot-password",
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"ghost{{suffix}}@arizona.edu\"\n}"
+            }
+          }
         },
         {
-          "name": "Remove game from library",
-          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
-            "pm.test('204 No Content', () => pm.response.to.have.status(204));"
-          ] } }],
-          "request": { "method": "DELETE", "header": [], "url": "{{engagementUrl}}/api/library/{{userId}}/{{gameId}}" }
+          "name": "Forgot password - registered address (202)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('202', () => pm.response.to.have.status(202));",
+                  "pm.test('the answer is identical, so addresses cannot be probed', () => pm.expect(pm.response.text()).to.eql(pm.collectionVariables.get('unknownResetBody')));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{gatewayUrl}}/api/auth/forgot-password",
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{otherEmail}}\"\n}"
+            }
+          }
         },
         {
-          "name": "Delete reaction",
-          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
-            "pm.test('204 No Content', () => pm.response.to.have.status(204));"
-          ] } }],
-          "request": { "method": "DELETE", "header": [], "url": "{{engagementUrl}}/api/reactions/{{reactionId}}" }
+          "name": "Read the reset email from Mailpit",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// the email is sent in the background: give it a moment to arrive",
+                  "const until = Date.now() + 2500; while (Date.now() < until) { }"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "const found = pm.response.json();",
+                  "pm.test('exactly one email was sent', () => pm.expect(found.messages.length).to.eql(1));",
+                  "pm.collectionVariables.set('resetMessageId', found.messages[0].ID);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{mailUrl}}/api/v1/search?query=to:{{otherEmail}}",
+            "auth": {
+              "type": "noauth"
+            }
+          }
         },
         {
-          "name": "Delete game",
-          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
-            "pm.test('204 No Content', () => pm.response.to.have.status(204));"
-          ] } }],
-          "request": { "method": "DELETE", "header": [], "url": "{{catalogUrl}}/api/games/{{gameId}}" }
+          "name": "Open the reset email",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "const text = pm.response.json().Text;",
+                  "const m = text.match(/reset-password\\.html\\?token=([A-Za-z0-9_-]+)/);",
+                  "pm.test('contains a reset link with a token', () => pm.expect(m).to.not.be.null);",
+                  "pm.collectionVariables.set('resetToken', m[1]);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{mailUrl}}/api/v1/message/{{resetMessageId}}",
+            "auth": {
+              "type": "noauth"
+            }
+          }
         },
         {
-          "name": "Delete user",
-          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
-            "pm.test('204 No Content', () => pm.response.to.have.status(204));"
-          ] } }],
-          "request": { "method": "DELETE", "header": [], "url": "{{identityUrl}}/api/users/{{userId}}" }
+          "name": "The unknown address received nothing",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "pm.test('no email', () => pm.expect(pm.response.json().messages.length).to.eql(0));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{mailUrl}}/api/v1/search?query=to:ghost{{suffix}}@arizona.edu",
+            "auth": {
+              "type": "noauth"
+            }
+          }
         },
         {
-          "name": "Get deleted user (404)",
-          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
-            "pm.test('404 Not Found', () => pm.response.to.have.status(404));",
-            "pm.collectionVariables.unset('suffix');"
-          ] } }],
-          "request": { "method": "GET", "header": [], "url": "{{identityUrl}}/api/users/{{userId}}" }
+          "name": "Reset - password too short (400)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('400', () => pm.response.to.have.status(400));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{gatewayUrl}}/api/auth/reset-password",
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"token\": \"{{resetToken}}\",\n  \"newPassword\": \"short\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Reset - invented token (400)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('400', () => pm.response.to.have.status(400));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{gatewayUrl}}/api/auth/reset-password",
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"token\": \"made-up-token\",\n  \"newPassword\": \"{{newPassword}}\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Reset the password with the emailed token",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{gatewayUrl}}/api/auth/reset-password",
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"token\": \"{{resetToken}}\",\n  \"newPassword\": \"{{newPassword}}\"\n}"
+            }
+          }
+        },
+        {
+          "name": "The old password no longer works (401)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('401', () => pm.response.to.have.status(401));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{gatewayUrl}}/api/auth/login",
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"{{otherUsername}}\",\n  \"password\": \"{{password}}\"\n}"
+            }
+          }
+        },
+        {
+          "name": "The new password works",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "pm.collectionVariables.set('otherToken', pm.response.json().accessToken);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{gatewayUrl}}/api/auth/login",
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"{{otherUsername}}\",\n  \"password\": \"{{newPassword}}\"\n}"
+            }
+          }
+        },
+        {
+          "name": "The link works only once (400)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('400', () => pm.response.to.have.status(400));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{gatewayUrl}}/api/auth/reset-password",
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"token\": \"{{resetToken}}\",\n  \"newPassword\": \"yet-another-pass-3\"\n}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "6. Account status and admin guard rails",
+      "item": [
+        {
+          "name": "Administrator suspends a user",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "pm.test('suspended', () => pm.expect(pm.response.json().status).to.eql('SUSPENDED'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{gatewayUrl}}/api/users/{{otherId}}/status",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{adminToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"SUSPENDED\"\n}"
+            }
+          }
+        },
+        {
+          "name": "A suspended user cannot log in (403)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('403', () => pm.response.to.have.status(403));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{gatewayUrl}}/api/auth/login",
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"{{otherUsername}}\",\n  \"password\": \"{{newPassword}}\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Administrator reinstates the user",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{gatewayUrl}}/api/users/{{otherId}}/status",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{adminToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"ACTIVE\"\n}"
+            }
+          }
+        },
+        {
+          "name": "The user can log in again",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "pm.collectionVariables.set('otherToken', pm.response.json().accessToken);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{gatewayUrl}}/api/auth/login",
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"{{otherUsername}}\",\n  \"password\": \"{{newPassword}}\"\n}"
+            }
+          }
+        },
+        {
+          "name": "The last administrator cannot be deleted (409)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('409', () => pm.response.to.have.status(409));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": "{{gatewayUrl}}/api/users/{{adminId}}",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{adminToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "The last administrator cannot be demoted (409)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('409', () => pm.response.to.have.status(409));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{gatewayUrl}}/api/users/{{adminId}}/role",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{adminToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"role\": \"PLAYER\"\n}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "7. Platform: discovery, config, gateway",
+      "item": [
+        {
+          "name": "Gateway health",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "pm.test('UP', () => pm.expect(pm.response.json().status).to.eql('UP'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{gatewayUrl}}/actuator/health",
+            "auth": {
+              "type": "noauth"
+            }
+          }
+        },
+        {
+          "name": "Service discovery: every service is registered in Eureka",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "const apps = pm.response.json().applications.application.map(a => a.name);",
+                  "pm.test('gateway, identity, catalog and engagement are all registered', () => pm.expect(apps).to.include.members(['GATEWAY', 'IDENTITY-SERVICE', 'GAME-CATALOG-SERVICE', 'ENGAGEMENT-SERVICE']));",
+                  "pm.test('every instance is UP', () => pm.response.json().applications.application.forEach(a => a.instance.forEach(i => pm.expect(i.status).to.eql('UP'))));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{eurekaUrl}}/eureka/apps",
+            "auth": {
+              "type": "noauth"
+            }
+          }
+        },
+        {
+          "name": "Gateway routes are visible to administrators only (403 for players)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('403', () => pm.response.to.have.status(403));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{gatewayUrl}}/actuator/gateway/routes",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{otherToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Gateway routes (administrator)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "const uris = pm.response.json().map(r => r.uri);",
+                  "pm.test('every route resolves through Eureka (lb://)', () => pm.expect(uris.every(u => u.startsWith('lb://'))).to.be.true);",
+                  "pm.test('has the three service routes', () => pm.expect(uris).to.include.members(['lb://identity-service', 'lb://game-catalog-service', 'lb://engagement-service']));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{gatewayUrl}}/actuator/gateway/routes",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{adminToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Config server serves the prod profile",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "pm.test('prod uses Postgres', () => pm.expect(JSON.stringify(pm.response.json().propertySources)).to.include('jdbc:postgresql'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{configUrl}}/game-catalog-service/prod",
+            "auth": {
+              "type": "noauth"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "8. Cleanup",
+      "item": [
+        {
+          "name": "Administrator moderates: deletes the comment",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('204', () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": "{{gatewayUrl}}/api/comments/{{commentId}}",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{adminToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Remove the game from the library",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('204', () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": "{{gatewayUrl}}/api/library/{{gameId}}",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{otherToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Delete a reaction (owner)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('204', () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": "{{gatewayUrl}}/api/reactions/{{reactionId}}",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{otherToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Delete a reaction (administrator)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('204', () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": "{{gatewayUrl}}/api/reactions/{{devReactionId}}",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{adminToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Delete the administrator's reaction",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('204', () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": "{{gatewayUrl}}/api/reactions/{{adminReactionId}}",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{adminToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Creator deletes their game",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('204', () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": "{{gatewayUrl}}/api/games/{{gameId}}",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{devToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Administrator deletes the other games",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('204', () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": "{{gatewayUrl}}/api/games/{{pendingGameId}}",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{adminToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Administrator deletes the spoof-test game",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('204', () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": "{{gatewayUrl}}/api/games/{{spoofGameId}}",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{adminToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "A user deletes their own account",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('204', () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": "{{gatewayUrl}}/api/users/{{otherId}}",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{otherToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Administrator deletes the developer account",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('204', () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": "{{gatewayUrl}}/api/users/{{playerId}}",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{adminToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Administrator deletes the remaining test account",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('204', () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": "{{gatewayUrl}}/api/users/{{sneakyId}}",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{adminToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "A deleted account cannot log in (401)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('401', () => pm.response.to.have.status(401));",
+                  "['suffix','playerId','otherId','sneakyId','gameId','pendingGameId','spoofGameId','reactionId','devReactionId','adminReactionId','commentId','playerToken','devToken','otherToken','adminToken','resetToken','resetMessageId'].forEach(k => pm.collectionVariables.unset(k));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{gatewayUrl}}/api/auth/login",
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"{{playerUsername}}\",\n  \"password\": \"{{password}}\"\n}"
+            }
+          }
         }
       ]
     }

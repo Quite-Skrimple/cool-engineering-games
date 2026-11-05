@@ -3,10 +3,13 @@ package edu.arizona.engagement.service;
 import java.util.List;
 import java.util.NoSuchElementException;
 
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 
+import edu.arizona.engagement.config.GameCatalogClient;
 import edu.arizona.engagement.dto.CommentRequest;
 import edu.arizona.engagement.dto.CommentResponse;
+import edu.arizona.engagement.dto.CommentUpdateRequest;
 import edu.arizona.engagement.model.entity.Comment;
 import edu.arizona.engagement.repository.CommentRepository;
 
@@ -14,37 +17,47 @@ import edu.arizona.engagement.repository.CommentRepository;
 public class CommentService {
 
     private final CommentRepository commentRepository;
+    private final GameCatalogClient catalogClient;
 
-    public CommentService(CommentRepository commentRepository) {
+    public CommentService(CommentRepository commentRepository, GameCatalogClient catalogClient) {
         this.commentRepository = commentRepository;
+        this.catalogClient = catalogClient;
     }
 
-    public CommentResponse createComment(CommentRequest request) {
+    public CommentResponse createComment(Long userId, CommentRequest request) {
+        catalogClient.requireVisibleGame(request.getGameId());
+
         Comment comment = new Comment();
-        comment.setUserId(request.getUserId());
+        comment.setUserId(userId);
         comment.setGameId(request.getGameId());
         comment.setBody(request.getBody());
 
         return toResponse(commentRepository.save(comment));
     }
 
-    public List<CommentResponse> getCommentsForGame(Long gameId) {
-        return commentRepository.findByGameId(gameId).stream()
+    public List<CommentResponse> getCommentsForGame(Long gameId, int page, int size) {
+        return commentRepository.findByGameId(gameId, Paging.newestFirst(page, size)).stream()
                 .map(this::toResponse)
                 .toList();
     }
 
-    public CommentResponse updateComment(Long id, CommentRequest request) {
+    /** Only the author can edit a comment. */
+    public CommentResponse updateComment(Long id, CommentUpdateRequest request, Long callerId) {
         Comment comment = findCommentOrThrow(id);
+        if (!comment.getUserId().equals(callerId)) {
+            throw new AccessDeniedException("You can only edit your own comments");
+        }
         comment.setBody(request.getBody());
         return toResponse(commentRepository.save(comment));
     }
 
-    public void deleteComment(Long id) {
-        if (!commentRepository.existsById(id)) {
-            throw new NoSuchElementException("Comment not found: " + id);
+    /** The author or an administrator (moderation) can delete a comment. */
+    public void deleteComment(Long id, Long callerId, boolean admin) {
+        Comment comment = findCommentOrThrow(id);
+        if (!admin && !comment.getUserId().equals(callerId)) {
+            throw new AccessDeniedException("You can only delete your own comments");
         }
-        commentRepository.deleteById(id);
+        commentRepository.delete(comment);
     }
 
     private Comment findCommentOrThrow(Long id) {

@@ -1,5 +1,15 @@
 name: cool-engineering-games
 
+# Only the gateway (8000), the Eureka dashboard (8761), the config server (8888) and the Mailpit inbox (8025)
+# are published. The three business services stay on the internal network, so every request has to come
+# through the gateway, and each service can be scaled:  docker compose up -d --scale game-catalog-service=3
+
+x-service-env: &service-env
+  SPRING_PROFILES_ACTIVE: prod
+  CONFIG_SERVER_URL: http://configserver:8888
+  EUREKA_URL: http://discovery-server:8761/eureka
+  JWT_SECRET: ${JWT_SECRET:?copy docker/.env.example to docker/.env and set JWT_SECRET}
+
 services:
 
   configserver:
@@ -15,6 +25,27 @@ services:
       timeout: 3s
       retries: 20
       start_period: 5s
+
+  discovery-server:
+    build:
+      context: ../discovery-server
+      args:
+        JAR_FILE: target/discovery-server-1.0-SNAPSHOT.jar
+    environment:
+      EUREKA_HOSTNAME: discovery-server
+    ports:
+      - "8761:8761"
+    healthcheck:
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/localhost/8761 && printf 'GET /actuator/health HTTP/1.0\\r\\n\\r\\n' >&3 && head -n1 <&3 | grep -q 200"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 10s
+
+  mailpit:
+    image: ghcr.io/axllent/mailpit:v1.33.0
+    ports:
+      - "8025:8025"
 
   identity-db:
     image: postgres:16-alpine
@@ -66,16 +97,29 @@ services:
     depends_on:
       configserver:
         condition: service_healthy
+      discovery-server:
+        condition: service_healthy
       identity-db:
         condition: service_healthy
+      mailpit:
+        condition: service_started
     environment:
-      SPRING_PROFILES_ACTIVE: prod
-      CONFIG_SERVER_URL: http://configserver:8888
+      <<: *service-env
       SPRING_DATASOURCE_URL: jdbc:postgresql://identity-db:5432/identity
       SPRING_DATASOURCE_USERNAME: identity
       SPRING_DATASOURCE_PASSWORD: identity
-    ports:
-      - "8081:8081"
+      MAIL_HOST: mailpit
+      MAIL_PORT: "1025"
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:5500}
+      BOOTSTRAP_ADMIN_USERNAME: ${BOOTSTRAP_ADMIN_USERNAME:-admin}
+      BOOTSTRAP_ADMIN_EMAIL: ${BOOTSTRAP_ADMIN_EMAIL:-admin@arizona.edu}
+      BOOTSTRAP_ADMIN_PASSWORD: ${BOOTSTRAP_ADMIN_PASSWORD:?copy docker/.env.example to docker/.env and set BOOTSTRAP_ADMIN_PASSWORD}
+    healthcheck:
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/localhost/8081 && printf 'GET /actuator/health HTTP/1.0\\r\\n\\r\\n' >&3 && head -n1 <&3 | grep -q 200"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+      start_period: 15s
 
   game-catalog-service:
     build:
@@ -85,16 +129,21 @@ services:
     depends_on:
       configserver:
         condition: service_healthy
+      discovery-server:
+        condition: service_healthy
       catalog-db:
         condition: service_healthy
     environment:
-      SPRING_PROFILES_ACTIVE: prod
-      CONFIG_SERVER_URL: http://configserver:8888
+      <<: *service-env
       SPRING_DATASOURCE_URL: jdbc:postgresql://catalog-db:5432/catalog
       SPRING_DATASOURCE_USERNAME: catalog
       SPRING_DATASOURCE_PASSWORD: catalog
-    ports:
-      - "8082:8082"
+    healthcheck:
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/localhost/8082 && printf 'GET /actuator/health HTTP/1.0\\r\\n\\r\\n' >&3 && head -n1 <&3 | grep -q 200"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+      start_period: 15s
 
   engagement-service:
     build:
@@ -104,16 +153,45 @@ services:
     depends_on:
       configserver:
         condition: service_healthy
+      discovery-server:
+        condition: service_healthy
       engagement-db:
         condition: service_healthy
     environment:
-      SPRING_PROFILES_ACTIVE: prod
-      CONFIG_SERVER_URL: http://configserver:8888
+      <<: *service-env
       SPRING_DATASOURCE_URL: jdbc:postgresql://engagement-db:5432/engagement
       SPRING_DATASOURCE_USERNAME: engagement
       SPRING_DATASOURCE_PASSWORD: engagement
+    healthcheck:
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/localhost/8083 && printf 'GET /actuator/health HTTP/1.0\\r\\n\\r\\n' >&3 && head -n1 <&3 | grep -q 200"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+      start_period: 15s
+
+  gateway:
+    build:
+      context: ../gateway
+      args:
+        JAR_FILE: target/gateway-1.0-SNAPSHOT.jar
+    depends_on:
+      configserver:
+        condition: service_healthy
+      discovery-server:
+        condition: service_healthy
+    environment:
+      <<: *service-env
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:*,http://127.0.0.1:*}
+      # DEBUG also logs why each call counted against a circuit breaker (set GATEWAY_LOG_LEVEL=DEBUG)
+      LOGGING_LEVEL_EDU_ARIZONA_GATEWAY: ${GATEWAY_LOG_LEVEL:-INFO}
     ports:
-      - "8083:8083"
+      - "8000:8000"
+    healthcheck:
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/localhost/8000 && printf 'GET /actuator/health HTTP/1.0\\r\\n\\r\\n' >&3 && head -n1 <&3 | grep -q 200"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+      start_period: 15s
 
 volumes:
   identity-db-data:

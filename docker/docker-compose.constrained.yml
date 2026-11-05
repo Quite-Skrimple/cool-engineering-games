@@ -1,0 +1,30 @@
+# Optional override for scalability experiments:
+#
+#   docker compose -f docker-compose.yml -f docker-compose.constrained.yml up -d
+#
+# On a laptop all containers share the same cores, so a single instance never becomes the bottleneck
+# and adding instances only adds overhead. Capping each service at one CPU makes it behave like a small
+# cloud instance, which is what makes the effect of scaling out measurable. Change the cap with SERVICE_CPUS
+# (for example SERVICE_CPUS=0.5). Needs at least 4 CPUs.
+
+services:
+  identity-service:
+    deploy:
+      resources:
+        limits:
+          cpus: "${SERVICE_CPUS:-1.0}"
+  game-catalog-service:
+    deploy:
+      resources:
+        limits:
+          cpus: "${SERVICE_CPUS:-1.0}"
+  engagement-service:
+    deploy:
+      resources:
+        limits:
+          cpus: "${SERVICE_CPUS:-1.0}"
+  gateway:
+    deploy:
+      resources:
+        limits:
+          cpus: "4.0"

@@ -13,8 +13,5 @@ import lombok.Setter;
 public class LibraryEntryRequest {
 
     @NotNull
-    private Long userId;
-
-    @NotNull
     private Long gameId;
 }

@@ -14,9 +14,6 @@ import lombok.Setter;
 public class ReactionRequest {
 
     @NotNull
-    private Long userId;
-
-    @NotNull
     private Long gameId;
 
     @NotNull

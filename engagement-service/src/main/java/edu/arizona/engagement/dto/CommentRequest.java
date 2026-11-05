@@ -15,9 +15,6 @@ import lombok.Setter;
 public class CommentRequest {
 
     @NotNull
-    private Long userId;
-
-    @NotNull
     private Long gameId;
 
     @NotBlank

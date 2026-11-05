@@ -19,10 +19,14 @@
     </properties>
 
     <modules>
+        <module>common-security</module>
         <module>configserver</module>
+        <module>discovery-server</module>
+        <module>gateway</module>
         <module>engagement-service</module>
         <module>game-catalog-service</module>
         <module>identity-service</module>
+        <module>load-tests</module>
     </modules>
 
 </project>
