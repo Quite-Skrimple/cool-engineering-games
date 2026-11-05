@@ -1,14 +1,16 @@
 package edu.arizona.catalog.dto;
 
-import edu.arizona.catalog.model.enums.ApprovalStatus;
 import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
+/**
+ * What a creator submits. The creator is always the caller and the approval status is
+ * controlled by the platform, so neither can be set from the request.
+ */
 @Getter
 @Setter
 @AllArgsConstructor
@@ -27,9 +29,4 @@ public class GameRequest {
 
     @NotBlank
     private String playableUrl;
-
-    @NotNull
-    private Long creatorId;
-
-    private ApprovalStatus approvalStatus;
 }

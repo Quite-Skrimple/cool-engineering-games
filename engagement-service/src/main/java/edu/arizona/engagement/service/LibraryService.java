@@ -2,9 +2,11 @@ package edu.arizona.engagement.service;
 
 import java.util.List;
 
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import edu.arizona.engagement.config.GameCatalogClient;
 import edu.arizona.engagement.dto.LibraryEntryRequest;
 import edu.arizona.engagement.dto.LibraryEntryResponse;
 import edu.arizona.engagement.exception.ConflictException;
@@ -15,22 +17,29 @@ import edu.arizona.engagement.repository.LibraryEntryRepository;
 public class LibraryService {
 
     private final LibraryEntryRepository libraryEntryRepository;
+    private final GameCatalogClient catalogClient;
 
-    public LibraryService(LibraryEntryRepository libraryEntryRepository) {
+    public LibraryService(LibraryEntryRepository libraryEntryRepository, GameCatalogClient catalogClient) {
         this.libraryEntryRepository = libraryEntryRepository;
+        this.catalogClient = catalogClient;
     }
 
-    public LibraryEntryResponse addToLibrary(LibraryEntryRequest request) {
-        if (libraryEntryRepository.existsByUserIdAndGameId(request.getUserId(), request.getGameId())) {
-            throw new ConflictException(
-                    "Game " + request.getGameId() + " is already in user " + request.getUserId() + "'s library");
+    public LibraryEntryResponse addToLibrary(Long userId, LibraryEntryRequest request) {
+        catalogClient.requireVisibleGame(request.getGameId());
+
+        if (libraryEntryRepository.existsByUserIdAndGameId(userId, request.getGameId())) {
+            throw alreadyInLibrary(request.getGameId());
         }
 
         LibraryEntry entry = new LibraryEntry();
-        entry.setUserId(request.getUserId());
+        entry.setUserId(userId);
         entry.setGameId(request.getGameId());
 
-        return toResponse(libraryEntryRepository.save(entry));
+        try {
+            return toResponse(libraryEntryRepository.save(entry));
+        } catch (DataIntegrityViolationException e) {
+            throw alreadyInLibrary(request.getGameId());
+        }
     }
 
     public List<LibraryEntryResponse> getLibraryForUser(Long userId) {
@@ -42,6 +51,10 @@ public class LibraryService {
     @Transactional
     public void removeFromLibrary(Long userId, Long gameId) {
         libraryEntryRepository.deleteByUserIdAndGameId(userId, gameId);
+    }
+
+    private ConflictException alreadyInLibrary(Long gameId) {
+        return new ConflictException("Game " + gameId + " is already in your library");
     }
 
     private LibraryEntryResponse toResponse(LibraryEntry entry) {

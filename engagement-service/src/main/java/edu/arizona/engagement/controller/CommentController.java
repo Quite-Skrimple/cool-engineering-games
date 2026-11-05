@@ -16,7 +16,10 @@ import org.springframework.web.bind.annotation.RestController;
 
 import edu.arizona.engagement.dto.CommentRequest;
 import edu.arizona.engagement.dto.CommentResponse;
+import edu.arizona.engagement.dto.CommentUpdateRequest;
 import edu.arizona.engagement.service.CommentService;
+import edu.arizona.engagement.service.Paging;
+import edu.arizona.security.CurrentUser;
 import jakarta.validation.Valid;
 
 @RestController
@@ -29,25 +32,29 @@ public class CommentController {
         this.commentService = commentService;
     }
 
+    /** The author is the caller, taken from the token. */
     @PostMapping
     public ResponseEntity<CommentResponse> createComment(@Valid @RequestBody CommentRequest request) {
-        CommentResponse response = commentService.createComment(request);
-        return ResponseEntity.status(HttpStatus.CREATED).body(response);
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(commentService.createComment(CurrentUser.id(), request));
     }
 
+    /** Newest first, 50 per page by default (at most 100). Ask for further pages with {@code page=1,2,...}. */
     @GetMapping
-    public List<CommentResponse> getCommentsForGame(@RequestParam Long gameId) {
-        return commentService.getCommentsForGame(gameId);
+    public List<CommentResponse> getCommentsForGame(@RequestParam Long gameId,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = Paging.DEFAULT_SIZE) int size) {
+        return commentService.getCommentsForGame(gameId, page, size);
     }
 
     @PutMapping("/{id}")
-    public CommentResponse updateComment(@PathVariable Long id, @Valid @RequestBody CommentRequest request) {
-        return commentService.updateComment(id, request);
+    public CommentResponse updateComment(@PathVariable Long id, @Valid @RequestBody CommentUpdateRequest request) {
+        return commentService.updateComment(id, request, CurrentUser.id());
     }
 
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> deleteComment(@PathVariable Long id) {
-        commentService.deleteComment(id);
+        commentService.deleteComment(id, CurrentUser.id(), CurrentUser.isAdmin());
         return ResponseEntity.noContent().build();
     }
 }

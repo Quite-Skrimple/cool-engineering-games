@@ -3,6 +3,7 @@ package edu.arizona.identity.model.entity;
 import java.time.Instant;
 
 import edu.arizona.identity.model.enums.UserRole;
+import edu.arizona.identity.model.enums.UserStatus;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -46,6 +47,11 @@ public class User {
     @Column(nullable = false)
     private UserRole role;
 
+    @Enumerated(EnumType.STRING)
+    @JdbcTypeCode(SqlTypes.VARCHAR)
+    @Column(nullable = false)
+    private UserStatus status;
+
     @Column(nullable = false, updatable = false)
     private Instant createdAt;
 
@@ -57,6 +63,9 @@ public class User {
         Instant now = Instant.now();
         createdAt = now;
         updatedAt = now;
+        if (status == null) {
+            status = UserStatus.ACTIVE;
+        }
     }
 
     @PreUpdate

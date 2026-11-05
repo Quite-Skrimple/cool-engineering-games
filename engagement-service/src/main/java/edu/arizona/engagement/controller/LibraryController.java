@@ -15,8 +15,10 @@ import org.springframework.web.bind.annotation.RestController;
 import edu.arizona.engagement.dto.LibraryEntryRequest;
 import edu.arizona.engagement.dto.LibraryEntryResponse;
 import edu.arizona.engagement.service.LibraryService;
+import edu.arizona.security.CurrentUser;
 import jakarta.validation.Valid;
 
+/** A user's saved games. Always the caller's own library: there is no way to name another user. */
 @RestController
 @RequestMapping("/api/library")
 public class LibraryController {
@@ -29,18 +31,18 @@ public class LibraryController {
 
     @PostMapping
     public ResponseEntity<LibraryEntryResponse> addToLibrary(@Valid @RequestBody LibraryEntryRequest request) {
-        LibraryEntryResponse response = libraryService.addToLibrary(request);
-        return ResponseEntity.status(HttpStatus.CREATED).body(response);
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(libraryService.addToLibrary(CurrentUser.id(), request));
     }
 
-    @GetMapping("/{userId}")
-    public List<LibraryEntryResponse> getLibraryForUser(@PathVariable Long userId) {
-        return libraryService.getLibraryForUser(userId);
+    @GetMapping
+    public List<LibraryEntryResponse> getMyLibrary() {
+        return libraryService.getLibraryForUser(CurrentUser.id());
     }
 
-    @DeleteMapping("/{userId}/{gameId}")
-    public ResponseEntity<Void> removeFromLibrary(@PathVariable Long userId, @PathVariable Long gameId) {
-        libraryService.removeFromLibrary(userId, gameId);
+    @DeleteMapping("/{gameId}")
+    public ResponseEntity<Void> removeFromLibrary(@PathVariable Long gameId) {
+        libraryService.removeFromLibrary(CurrentUser.id(), gameId);
         return ResponseEntity.noContent().build();
     }
 }

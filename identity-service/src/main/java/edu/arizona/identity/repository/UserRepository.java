@@ -5,6 +5,7 @@ import java.util.Optional;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 import edu.arizona.identity.model.entity.User;
+import edu.arizona.identity.model.enums.UserRole;
 
 public interface UserRepository extends JpaRepository<User, Long> {
 
@@ -15,4 +16,6 @@ public interface UserRepository extends JpaRepository<User, Long> {
     boolean existsByUsername(String username);
 
     boolean existsByEmail(String email);
+
+    long countByRole(UserRole role);
 }
