@@ -61,6 +61,30 @@ final class Journeys {
                         .header("Authorization", "Bearer #{token}").check(status().is(200)));
     }
 
+    /**
+     * The security rules, checked while the system is busy. A rejection counts as a success here because
+     * the check expects it: no token must give 401, a tampered token 401, a player asking for the user
+     * list 403, and the administrator the same list with 200.
+     */
+    static ScenarioBuilder security(Seeder seed) {
+        Iterator<Map<String, Object>> feeder = Stream.generate(() -> Map.<String, Object>of(
+                "playerToken", seed.randomPlayer().token(), "adminToken", seed.adminToken())).iterator();
+
+        return scenario("Security rules under load")
+                .feed(feeder)
+                .exec(http("Unauthenticated request (expect 401)").get("/api/games").check(status().is(401)))
+                .exec(http("Tampered token (expect 401)").get("/api/games")
+                        .header("Authorization", "Bearer #{playerToken}x").check(status().is(401)))
+                .exec(http("Forbidden request: player lists users (expect 403)").get("/api/users")
+                        .header("Authorization", "Bearer #{playerToken}").check(status().is(403)))
+                .exec(http("Player cannot submit a game (expect 403)").post("/api/games")
+                        .header("Authorization", "Bearer #{playerToken}")
+                        .body(StringBody("{\"title\":\"x\",\"genre\":\"x\",\"description\":\"x\",\"playableUrl\":\"https://example.com\"}"))
+                        .check(status().is(403)))
+                .exec(http("Administrator lists users (expect 200)").get("/api/users")
+                        .header("Authorization", "Bearer #{adminToken}").check(status().is(200)));
+    }
+
     /** A brand-new visitor: sign up, log in, load their profile. The password hashing makes this the heavy path. */
     static ScenarioBuilder newcomer(Seeder seed) {
         return scenario("Newcomer signing up")

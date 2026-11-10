@@ -87,6 +87,11 @@ final class Seeder {
         return gameIds.get(ThreadLocalRandom.current().nextInt(gameIds.size()));
     }
 
+    /** The administrator's token, for journeys that check what an administrator may do. */
+    String adminToken() {
+        return adminToken;
+    }
+
     void cleanup() {
         if (adminToken == null) {
             return;

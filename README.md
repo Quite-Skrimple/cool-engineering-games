@@ -45,6 +45,7 @@ The gateway is the only door. In Docker the three business services publish no p
 | `configserver` | 8888 | Centralized `dev` / `prod` configuration |
 | `common-security` | n/a | Library: the JWT setup every servlet service shares |
 | `load-tests` | n/a | Gatling simulations |
+| `demo-console` | 5500 | Optional demo web page and tiny Node server that call the gateway (see its README); not the project frontend |
 | Mailpit | 8025 | Dev/demo mail inbox (web UI and API) |
 
 Each business service is its own Maven module with its own 3-layer stack (entity → repository → service → controller) and its own database. There are no shared tables across services.
@@ -242,6 +243,8 @@ It passes against the Docker `prod` stack and against the local `dev` stack. To 
 `load-tests` holds two Gatling simulations. Both seed real users and approved games through the gateway, drive real bearer-token traffic through the whole system, and delete everything they created.
 
 A player journey is: list games → view a game → read comments → post a comment → react → read the library. The comment and reaction steps make `engagement-service` call `game-catalog-service` with the player's token, so one journey exercises the gateway, service discovery, token propagation between services and all three databases. A second "newcomer" journey registers, logs in and loads a profile, which is the expensive path because it hashes passwords.
+
+`LoadSimulation` also runs a third "security" journey at the same time, in which a rejection is the expected result: a request with no token (401), a tampered token (401), a player listing users (403), a player submitting a game (403) and an administrator listing users (200). It asserts that more than 95% of requests succeed, fewer than 1% fail and the 95th percentile stays under 1,500 ms, so a regression in either speed or access rules fails the run. One run on one instance of each service: 16,406 requests in 1 minute 20 seconds, 0 failed, 95th percentile 26 ms.
 
 ```bash
 # throughput under steady concurrency (closed model: a faster system completes more journeys)

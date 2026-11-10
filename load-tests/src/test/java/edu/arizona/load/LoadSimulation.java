@@ -40,9 +40,12 @@ public class LoadSimulation extends Simulation {
                         rampConcurrentUsers(1).to(concurrent).during(ramp),
                         constantConcurrentUsers(concurrent).during(hold)),
                 Journeys.newcomer(seeder).injectOpen(
-                        constantUsersPerSec(newcomersPerSecond).during(ramp.plus(hold))))
+                        constantUsersPerSec(newcomersPerSecond).during(ramp.plus(hold))),
+                Journeys.security(seeder).injectOpen(
+                        constantUsersPerSec(intProp("securityChecksPerSecond", 2)).during(ramp.plus(hold))))
                 .protocols(protocol)
                 .assertions(
+                        global().successfulRequests().percent().gt(95.0),
                         global().failedRequests().percent().lt(1.0),
                         global().responseTime().percentile(95.0).lt(intProp("maxP95Millis", 1500)));
     }
