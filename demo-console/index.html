@@ -1,0 +1,599 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cool Engineering Games</title>
+<style>
+  :root {
+    --bg:#0b0e13; --panel:#11151c; --panel2:#171c25; --line:#232a35; --line2:#303a48;
+    --text:#e7eaf0; --muted:#8b94a5; --accent:#5cc8ff;
+    --ok:#5fb98a; --warn:#d6a24a; --bad:#d9636f;
+    --mono:"Cascadia Mono", Consolas, "SF Mono", Menlo, monospace;
+    --ease:cubic-bezier(.2,.7,.2,1);
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; font:15px/1.55 "Segoe UI Variable Text", "Segoe UI", Inter, Arial, sans-serif; color:var(--text); background:var(--bg); min-height:100vh; -webkit-font-smoothing:antialiased; }
+  a { color:var(--accent); text-decoration:none; } a:hover { text-decoration:underline; }
+
+  /* motion primitives */
+  @keyframes rise { from { opacity:0; transform:translateY(16px); } }
+  @keyframes fadeIn { from { opacity:0; transform:translateY(-5px); } }
+  @keyframes slideIn { from { opacity:0; transform:translateX(26px); } to { opacity:1; transform:none; } }
+  @keyframes ring { from { transform:scale(1); opacity:.7; } to { transform:scale(3.2); opacity:0; } }
+  @keyframes scan { 0% { top:0; opacity:0; } 8% { opacity:.3; } 92% { opacity:.3; } 100% { top:100%; opacity:0; } }
+  @keyframes drift { to { background-position:300px 300px; } }
+  @keyframes blink { 50% { opacity:.4; } }
+  @keyframes pop { from { transform:scale(0); } }
+  .reveal { animation:rise .6s var(--ease) backwards; animation-delay:calc(var(--i, 0) * 70ms); }
+  .grid-bg { position:fixed; inset:0; z-index:-1; pointer-events:none; background-size:30px 30px; animation:drift 70s linear infinite;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='30' height='30'%3E%3Ccircle cx='1' cy='1' r='1' fill='%231b222c'/%3E%3C/svg%3E"); }
+  #bar { position:fixed; top:0; left:0; height:2px; width:0; background:var(--accent); z-index:30; opacity:0; transition:width .35s var(--ease), opacity .3s; }
+  .dot { position:relative; display:inline-block; width:7px; height:7px; border-radius:50%; background:currentColor; color:var(--ok); margin-right:9px; vertical-align:middle; }
+  .dot::after { content:""; position:absolute; inset:0; border-radius:50%; border:1px solid currentColor; animation:ring 2.4s ease-out infinite; }
+  .dot.down { color:var(--bad); }
+
+  /* header */
+  .top { position:sticky; top:0; z-index:10; display:flex; align-items:center; gap:28px; padding:14px 32px; background:var(--bg); border-bottom:1px solid var(--line); flex-wrap:wrap; }
+  .brand { display:flex; align-items:center; gap:12px; font-weight:600; font-size:16px; letter-spacing:.01em; cursor:pointer; white-space:nowrap; }
+  .logo { width:30px; height:30px; border:1px solid var(--accent); color:var(--accent); border-radius:6px; display:grid; place-items:center; font:600 10px var(--mono); letter-spacing:.04em; transition:transform .4s var(--ease); }
+  .brand:hover .logo { transform:rotate(90deg); }
+  nav { position:relative; display:flex; gap:4px; }
+  nav .ind { position:absolute; top:0; bottom:0; left:0; width:0; background:var(--panel2); border:1px solid var(--line2); border-radius:6px; pointer-events:none; transition:transform .4s var(--ease), width .4s var(--ease); }
+  #navbtns { display:contents; }
+  nav button { position:relative; z-index:1; background:none; border:0; color:var(--muted); font:inherit; font-weight:500; padding:7px 14px; border-radius:6px; cursor:pointer; transition:color .25s; }
+  nav button:hover, nav button.on { color:var(--text); }
+  .search { margin-left:auto; display:flex; align-items:center; background:var(--panel); border:1px solid var(--line); border-radius:6px; padding:0 4px 0 12px; min-width:260px; transition:border-color .25s, min-width .35s var(--ease); }
+  .search:focus-within { border-color:var(--accent); min-width:320px; }
+  .search input { flex:1; background:none; border:0; color:var(--text); font:inherit; padding:8px 4px; outline:none; min-width:0; }
+  .search button { background:none; border:0; color:var(--muted); cursor:pointer; padding:6px 8px; display:grid; place-items:center; }
+  .auth { display:flex; gap:8px; align-items:center; }
+  .who { color:var(--muted); font-size:14px; } .who b { color:var(--text); font-weight:600; }
+  .role { display:inline-block; margin-left:8px; padding:1px 7px; border-radius:4px; font:600 10px var(--mono); letter-spacing:.08em; border:1px solid var(--line2); color:var(--accent); }
+
+  button { transition:background .2s, border-color .2s, color .2s, transform .15s var(--ease); }
+  button.btn { font:inherit; font-weight:600; padding:8px 18px; border-radius:6px; border:1px solid var(--accent); background:var(--accent); color:#04121a; cursor:pointer; }
+  button.btn:hover { background:#7ad6ff; border-color:#7ad6ff; transform:translateY(-1px); }
+  button.btn:active, button.ghost:active, button.danger:active { transform:translateY(1px); }
+  button.ghost { font:inherit; font-weight:500; padding:7px 14px; border-radius:6px; border:1px solid var(--line2); background:transparent; color:var(--text); cursor:pointer; }
+  button.ghost:hover { background:var(--panel2); border-color:var(--muted); }
+  button.danger { font:inherit; font-weight:500; padding:7px 14px; border-radius:6px; border:1px solid #5a2f36; background:transparent; color:var(--bad); cursor:pointer; }
+  button.danger:hover { background:#1c1216; border-color:var(--bad); }
+  button:disabled { opacity:.5; cursor:default; }
+
+  main { max-width:1180px; margin:0 auto; padding:28px 32px 10px; }
+
+  /* toasts */
+  #toasts { position:fixed; right:24px; top:78px; z-index:20; display:flex; flex-direction:column; gap:10px; width:min(380px, calc(100vw - 48px)); pointer-events:none; }
+  .toast { display:flex; gap:12px; align-items:flex-start; background:var(--panel2); border:1px solid var(--line2); border-radius:8px; padding:12px 14px; animation:slideIn .4s var(--ease); transition:opacity .3s, transform .3s; pointer-events:auto; }
+  .toast i { flex:none; width:8px; height:8px; border-radius:50%; background:var(--accent); margin-top:7px; }
+  .toast.ok i { background:var(--ok); } .toast.err i { background:var(--bad); }
+  .toast.out { opacity:0; transform:translateX(26px); }
+
+  /* hero + sections */
+  .hero { position:relative; overflow:hidden; display:grid; grid-template-columns:1.5fr 1fr; gap:40px; padding:60px 52px; background:var(--panel); border:1px solid var(--line); border-radius:10px; }
+  .scan { position:absolute; left:0; right:0; top:0; height:1px; background:var(--accent); opacity:0; animation:scan 7s linear infinite; pointer-events:none; }
+  .eyebrow { font:600 11px var(--mono); letter-spacing:.16em; text-transform:uppercase; color:var(--accent); }
+  .hero h1 { margin:12px 0 14px; font-size:58px; line-height:1.03; font-weight:600; letter-spacing:-.025em; }
+  .hero h1 .reveal { display:inline-block; }
+  .hero p { margin:0 0 30px; color:var(--muted); max-width:460px; font-size:17px; }
+  .readout { position:relative; align-self:end; border:1px solid var(--line); border-radius:8px; background:var(--bg); font:12px/1.95 var(--mono); padding:16px 20px; }
+  .readout::before, .readout::after { content:""; position:absolute; width:11px; height:11px; border:2px solid var(--accent); }
+  .readout::before { top:-1px; left:-1px; border-right:0; border-bottom:0; border-top-left-radius:8px; }
+  .readout::after { bottom:-1px; right:-1px; border-left:0; border-top:0; border-bottom-right-radius:8px; }
+  .readout .rows div { display:flex; justify-content:space-between; gap:16px; color:var(--muted); }
+  .readout .t { color:var(--text); letter-spacing:.16em; font-size:10px; margin-bottom:4px; }
+  .readout .lat { display:flex; justify-content:space-between; margin-top:10px; padding-top:8px; border-top:1px solid var(--line); color:var(--muted); }
+  #spark { display:block; width:100%; height:30px; margin-top:4px; }
+  .stats { display:grid; grid-template-columns:repeat(4, 1fr); gap:16px; margin-top:16px; }
+  .stat { background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:16px 20px; }
+  .stat .k { font:600 10px var(--mono); letter-spacing:.14em; color:var(--muted); text-transform:uppercase; }
+  .stat .v { font:600 30px var(--mono); letter-spacing:-.02em; margin-top:6px; transition:color .5s; }
+  .stat .v.flash { color:var(--accent); transition:none; }
+  .sec { margin-top:52px; } .sec-head { display:flex; align-items:flex-end; justify-content:space-between; gap:12px; margin-bottom:16px; }
+  .sec h2 { margin:4px 0 0; font-size:28px; font-weight:600; letter-spacing:-.015em; }
+  .panel { background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:20px 22px; }
+  .muted { color:var(--muted); } .small { font-size:13px; }
+  .skel { height:84px; margin-bottom:14px; background:var(--panel); border:1px solid var(--line); border-radius:8px; animation:blink 1.3s ease-in-out infinite; }
+
+  /* game cards */
+  .grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(250px, 1fr)); gap:16px; }
+  .game { background:var(--panel); border:1px solid var(--line); border-radius:8px; overflow:hidden; display:flex; flex-direction:column; transition:transform .3s var(--ease), border-color .3s; }
+  .game:hover { transform:translateY(-4px); border-color:var(--accent); }
+  .cover { height:96px; display:grid; place-items:center; font:600 40px var(--mono); color:var(--accent); }
+  .cover span { display:inline-block; transition:transform .4s var(--ease); }
+  .game:hover .cover span { transform:scale(1.18); }
+  .gbody { padding:16px 18px 18px; display:flex; flex-direction:column; gap:7px; flex:1; border-top:1px solid var(--line); }
+  .gbody h3 { margin:2px 0 0; font-size:18px; font-weight:600; letter-spacing:-.01em; }
+  .meta { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+  .chip { display:inline-block; padding:1px 8px; border-radius:4px; font:600 10px var(--mono); letter-spacing:.08em; text-transform:uppercase; border:1px solid var(--line2); color:var(--muted); }
+  .chip.APPROVED { color:var(--ok); border-color:#2f5a45; } .chip.PENDING { color:var(--warn); border-color:#5c4a24; } .chip.REJECTED { color:var(--bad); border-color:#5a2f36; }
+  .row { display:flex; flex-wrap:wrap; gap:8px; margin-top:auto; padding-top:10px; align-items:center; }
+  .featured { display:grid; grid-template-columns:minmax(200px, 300px) 1fr; }
+  .featured .cover { height:100%; min-height:190px; font-size:72px; }
+  .featured .gbody { border-top:0; border-left:1px solid var(--line); }
+  .discuss:not(:empty) { padding:14px 0 0; border-top:1px solid var(--line); margin-top:8px; animation:fadeIn .3s var(--ease); } .discuss ul { padding-left:18px; margin:6px 0; }
+  .cats { display:grid; grid-template-columns:repeat(auto-fill, minmax(190px, 1fr)); gap:14px; }
+  .cat { position:relative; background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:18px 20px; cursor:pointer; text-align:left; color:var(--text); font:inherit; transition:transform .3s var(--ease), border-color .3s, background .3s; }
+  .cat:hover { transform:translateY(-3px); border-color:var(--accent); background:var(--panel2); }
+  .cat b { display:block; font-size:17px; font-weight:600; } .cat span { color:var(--muted); font:12px var(--mono); }
+  .cat em { position:absolute; right:18px; top:50%; font-style:normal; color:var(--accent); opacity:0; transform:translate(-8px, -50%); transition:transform .3s var(--ease), opacity .3s; }
+  .cat:hover em { opacity:1; transform:translate(0, -50%); }
+  .pills { display:flex; flex-wrap:wrap; gap:8px; margin-bottom:20px; }
+  .pills button.on { background:var(--panel2); border-color:var(--accent); }
+
+  /* forms */
+  .cols { display:grid; grid-template-columns:repeat(auto-fit, minmax(290px, 1fr)); gap:16px; }
+  .panel h2 { margin:0 0 12px; font-size:18px; font-weight:600; }
+  label { display:block; font-size:12px; color:var(--muted); margin-bottom:12px; letter-spacing:.02em; }
+  input, select { display:block; width:100%; padding:9px 11px; margin-top:5px; font:inherit; color:var(--text); background:var(--bg); border:1px solid var(--line2); border-radius:6px; transition:border-color .25s; }
+  input:focus, select:focus { outline:none; border-color:var(--accent); }
+  details { margin-bottom:20px; } summary { cursor:pointer; font-weight:600; color:var(--accent); margin-bottom:12px; }
+  details[open] > :not(summary) { animation:fadeIn .3s var(--ease); }
+  pre { background:var(--bg); border:1px solid var(--line); padding:12px; border-radius:6px; overflow:auto; font:12px var(--mono); margin:8px 0; color:#c9d2e3; }
+  table { width:100%; border-collapse:collapse; background:var(--panel); border:1px solid var(--line); border-radius:8px; overflow:hidden; }
+  th, td { text-align:left; padding:11px 16px; border-bottom:1px solid var(--line); } th { background:var(--panel2); font:600 11px var(--mono); color:var(--muted); text-transform:uppercase; letter-spacing:.1em; }
+  tr:hover td { background:var(--panel2); } td { transition:background .2s; }
+  td select { margin:0; padding:5px 8px; width:auto; }
+  .st-UP { color:var(--ok); font-weight:600; } .st-DOWN, .st-OUT_OF_SERVICE { color:var(--bad); font-weight:600; }
+  .probe { display:flex; flex-wrap:wrap; gap:3px; margin:12px 0; } .probe i { width:14px; height:14px; border-radius:2px; background:var(--ok); display:block; animation:pop .25s var(--ease); } .probe i.bad { background:var(--bad); } .probe i.mid { background:var(--warn); }
+
+  /* sign in / register */
+  .auth-wrap { max-width:420px; margin:36px auto 0; }
+  .auth-card { background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:34px 34px 30px; }
+  .auth-brand { display:flex; justify-content:center; margin-bottom:20px; }
+  .auth-brand .logo { width:42px; height:42px; font-size:12px; }
+  .auth-card h1 { margin:0 0 6px; font-size:24px; font-weight:600; letter-spacing:-.015em; text-align:center; }
+  .auth-card .sub { margin:0 0 26px; color:var(--muted); font-size:14px; text-align:center; }
+  .field { margin-bottom:16px; }
+  .lab { display:flex; justify-content:space-between; align-items:baseline; margin-bottom:6px; }
+  .lab label { margin:0; font-size:13px; color:var(--text); font-weight:500; } .lab a { font-size:12px; }
+  .field input { margin:0; padding:11px 12px; }
+  .pw { position:relative; } .pw input { padding-right:64px; }
+  .eye { position:absolute; right:6px; top:50%; transform:translateY(-50%); background:none; border:0; color:var(--muted); font:600 11px var(--mono); letter-spacing:.06em; text-transform:uppercase; cursor:pointer; padding:6px 8px; }
+  .eye:hover { color:var(--text); }
+  .auth-card .btn { width:100%; padding:11px 18px; margin-top:6px; }
+  .alt { margin-top:22px; text-align:center; color:var(--muted); font-size:14px; }
+  .fine { margin:12px 0 0; color:var(--muted); font-size:12px; text-align:center; }
+  .auth-wrap .foot { margin:18px 0 0; text-align:center; color:var(--muted); font-size:12px; }
+  .demo { display:flex; gap:14px; align-items:center; justify-content:center; margin:8px 0 6px; flex-wrap:wrap; }
+  #mailbox:not(:empty) { margin-top:14px; padding-top:14px; border-top:1px solid var(--line); text-align:center; }
+
+  /* request log */
+  #logbox { max-width:1180px; margin:44px auto 44px; padding:0 32px; } #logbox h3 { font:600 11px var(--mono); color:var(--muted); text-transform:uppercase; letter-spacing:.14em; margin:0 0 10px; }
+  #log { background:var(--panel); border:1px solid var(--line); border-radius:8px; font:12px var(--mono); max-height:190px; overflow:auto; color:#c9d2e3; }
+  #log div { display:grid; grid-template-columns:96px 54px 1fr 44px 66px; gap:8px; padding:5px 14px; border-bottom:1px solid var(--line); animation:fadeIn .35s var(--ease); }
+  .s2 { color:var(--ok); } .s4 { color:var(--warn); } .s5, .s0 { color:var(--bad); font-weight:700; }
+  @media (max-width:820px) { .hero { grid-template-columns:1fr; padding:32px 24px; } .hero h1 { font-size:40px; } .readout { display:none; } .stats { grid-template-columns:repeat(2, 1fr); } .featured { grid-template-columns:1fr; } .search { margin-left:0; width:100%; } }
+  @media (prefers-reduced-motion:reduce) { *, *::before, *::after { animation:none !important; transition:none !important; } }
+</style>
+</head>
+<body>
+<div class="grid-bg"></div>
+<div id="bar"></div>
+<header class="top">
+  <div class="brand" data-act="tab" data-tab="home"><span class="logo">CEG</span><span>Cool Engineering Games</span></div>
+  <nav id="tabs"><span class="ind" id="ind"></span><span id="navbtns"></span></nav>
+  <form class="search" data-form="search">
+    <input name="q" placeholder="Search games..." autocomplete="off">
+    <button type="submit" aria-label="Search"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg></button>
+  </form>
+  <div class="auth" id="auth"></div>
+</header>
+<main><div id="view"></div></main>
+<div id="toasts"></div>
+<div id="logbox"><h3><i class="dot"></i>Requests this page sent to the gateway (localhost:8000)</h3><div id="log"></div></div>
+
+<script>
+const GW = "http://localhost:8000";
+const $ = (s) => document.querySelector(s);
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const calm = matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+// ---------- session ----------
+let token = null, claims = null, tab = "home", lastReg = { username: "", password: "" }, lastForgot = "", forgotSent = false;
+let view = { mode: "all", genre: null, q: "" };
+function decode(t) {
+  try { const p = t.split(".")[1].replace(/-/g, "+").replace(/_/g, "/"); return JSON.parse(decodeURIComponent(escape(atob(p)))); } catch { return null; }
+}
+function setToken(t) {
+  token = t; claims = t ? decode(t) : null;
+  if (claims && claims.exp * 1000 < Date.now()) { token = null; claims = null; }
+  try { token ? sessionStorage.setItem("ceg_token", token) : sessionStorage.removeItem("ceg_token"); } catch {}
+}
+try { setToken(sessionStorage.getItem("ceg_token")); } catch {}
+const roles = () => [].concat(claims?.roles || []).map((r) => String(r).replace(/^ROLE_/, ""));
+const has = (r) => roles().includes(r);
+const me = () => (claims ? Number(claims.sub) : null);
+
+// ---------- motion helpers ----------
+function countTo(el, to, fmt = (n) => String(Math.round(n))) {
+  if (!el) return;
+  const from = Number(el.dataset.v ?? 0); el.dataset.v = to;
+  cancelAnimationFrame(el._raf);
+  if (calm || from === to) { el.textContent = fmt(to); return; }
+  const t0 = performance.now(), dur = 700;
+  const step = (t) => { const k = Math.min(1, (t - t0) / dur); el.textContent = fmt(from + (to - from) * (1 - Math.pow(1 - k, 3))); if (k < 1) el._raf = requestAnimationFrame(step); };
+  el._raf = requestAnimationFrame(step);
+}
+function flash(el) { if (!el) return; el.classList.add("flash"); setTimeout(() => el.classList.remove("flash"), 350); }
+function moveIndicator() {
+  const ind = $("#ind"), on = document.querySelector("#navbtns button.on"); if (!ind) return; ind.style.opacity = on ? "1" : "0"; if (!on) return;
+  ind.style.width = on.offsetWidth + "px"; ind.style.transform = `translateX(${on.offsetLeft}px)`;
+}
+window.addEventListener("resize", moveIndicator);
+function stagger() {
+  let i = 0;
+  document.querySelectorAll("#view .hero, #view .stat, #view .sec-head, #view .game, #view .cat, #view .cols > .panel, #view table, #view .pills, #view > .panel, #view .auth-card").forEach((el) => {
+    if (el.closest(".hero") && !el.classList.contains("hero")) return;
+    el.classList.add("reveal"); el.style.setProperty("--i", Math.min(i++, 12));
+  });
+}
+let pending = 0;
+function bar(on) {
+  const b = $("#bar"); if (!b) return;
+  if (on) { b.style.opacity = 1; b.style.width = "72%"; }
+  else { b.style.width = "100%"; setTimeout(() => { b.style.opacity = 0; setTimeout(() => { b.style.width = "0"; }, 320); }, 180); }
+}
+function toast(msg, kind) {
+  const box = $("#toasts"); if (!msg) { box.innerHTML = ""; return; }
+  const t = document.createElement("div"); t.className = "toast " + (kind || ""); t.innerHTML = `<i></i><span>${esc(msg)}</span>`;
+  box.appendChild(t); while (box.children.length > 3) box.removeChild(box.firstChild);
+  setTimeout(() => { t.classList.add("out"); setTimeout(() => t.remove(), 320); }, kind === "err" ? 7500 : 4800);
+}
+const notice = toast;
+
+// ---------- live stats (all values come from real requests) ----------
+let reqTotal = 0; const lat = []; let statFrame = 0;
+function scheduleStats() { if (!statFrame) statFrame = requestAnimationFrame(() => { statFrame = 0; updateStats(); }); }
+function updateStats() {
+  const r = $("#sReq"); if (r) { countTo(r, reqTotal); flash(r); }
+  const avg = lat.length ? lat.reduce((a, b) => a + b, 0) / lat.length : 0;
+  const l = $("#sLat"); if (l) countTo(l, Math.round(avg), (n) => Math.round(n) + " ms");
+  const now = $("#latNow"); if (now && lat.length) now.textContent = lat[lat.length - 1] + " ms";
+  drawSpark();
+}
+function drawSpark() {
+  const svg = $("#spark"); if (!svg) return;
+  const pts = lat.slice(-28); if (pts.length < 2) { svg.innerHTML = ""; return; }
+  const max = Math.max(...pts, 20), w = 140, h = 30;
+  svg.innerHTML = `<polyline points="${pts.map((v, i) => `${(i / (pts.length - 1)) * w},${(h - 3 - (v / max) * (h - 6)).toFixed(1)}`).join(" ")}" fill="none" stroke="#5cc8ff" stroke-width="1.4" stroke-linejoin="round" stroke-linecap="round"/>`;
+}
+
+// ---------- request log + api ----------
+function addLog(method, path, status, ms) {
+  const log = $("#log");
+  log.insertAdjacentHTML("afterbegin", `<div><span>${new Date().toLocaleTimeString()}</span><b>${method}</b><span>${esc(path)}</span><span class="s${String(status)[0]}">${status || "ERR"}</span><span>${ms} ms</span></div>`);
+  while (log.children.length > 40) log.removeChild(log.lastChild);
+}
+async function api(method, path, body, opts = {}) {
+  const headers = {};
+  if (body !== undefined) headers["Content-Type"] = "application/json";
+  if (token && !opts.anon) headers.Authorization = "Bearer " + token;
+  const t0 = performance.now(); let r;
+  if (!opts.quiet && ++pending === 1) bar(true);
+  const done = (ms) => { reqTotal++; lat.push(ms); if (lat.length > 60) lat.shift(); scheduleStats(); if (!opts.quiet && --pending === 0) bar(false); };
+  try { r = await fetch(GW + path, { method, headers, body: body !== undefined ? JSON.stringify(body) : undefined }); }
+  catch { const ms = Math.round(performance.now() - t0); if (!opts.quiet) addLog(method, path, 0, ms); done(ms); const e = new Error("Cannot reach the gateway on :8000"); e.status = 0; throw e; }
+  const ms = Math.round(performance.now() - t0);
+  const text = await r.text(); let data = text;
+  try { data = text ? JSON.parse(text) : null; } catch {}
+  if (!opts.quiet) addLog(method, path, r.status, ms);
+  done(ms);
+  if (!r.ok) { const e = new Error(r.status + " " + ((data && data.message) || (typeof data === "string" && data) || r.statusText)); e.status = r.status; throw e; }
+  return data;
+}
+
+// ---------- html helpers ----------
+const panel = (title, body) => `<section class="panel"><h2>${esc(title)}</h2>${body}</section>`;
+const form = (name, fields, label, extra = "") =>
+  `<form data-form="${name}" ${extra}>${fields.map(([n, l, v, t]) => `<label>${esc(l)}<input name="${n}" type="${t || "text"}" value="${esc(v || "")}" required autocomplete="off"></label>`).join("")}<button class="btn" type="submit">${esc(label)}</button></form>`;
+const signInPrompt = (what) => `<div class="panel"><p class="muted">${esc(what)}</p><button class="btn" data-act="tab" data-tab="signin">Sign in</button></div>`;
+const head = (eyebrow, title, right = "") => `<div class="sec-head"><div><div class="eyebrow">${esc(eyebrow)}</div><h2>${esc(title)}</h2></div>${right}</div>`;
+const TONES = ["#18222f", "#1a2a36", "#1d2733", "#172530", "#1e2a38"];
+const cover = (g) => `<div class="cover" style="background:${TONES[Number(g.id) % TONES.length]}"><span>${esc((g.title || "?")[0])}</span></div>`;
+
+async function approvedGames() { return api("GET", "/api/games" + (has("ADMIN") ? "?status=APPROVED" : "")); }
+async function likeCounts(games) {
+  const out = {};
+  await Promise.all(games.slice(0, 12).map(async (g) => {
+    try { out[g.id] = (await api("GET", `/api/reactions?gameId=${g.id}&size=100`, undefined, { quiet: true })).filter((r) => r.type === "LIKE").length; } catch { out[g.id] = 0; }
+  }));
+  return out;
+}
+
+function gameCard(g, o = {}) {
+  const canDelete = has("ADMIN") || g.creatorId === me();
+  const likes = o.likes != null ? `<span class="chip">${o.likes} like${o.likes === 1 ? "" : "s"}</span>` : "";
+  const buttons = `<div class="row">
+      <button class="btn" data-act="lib" data-id="${g.id}">Add to library</button>
+      <button class="ghost" data-act="react" data-id="${g.id}" data-type="LIKE">Like</button>
+      <button class="ghost" data-act="react" data-id="${g.id}" data-type="DISLIKE">Dislike</button>
+      ${o.featured ? "" : `<button class="ghost" data-act="discuss" data-id="${g.id}">Comments</button>`}
+      ${has("ADMIN") && g.approvalStatus !== "APPROVED" ? `<button class="ghost" data-act="approve" data-id="${g.id}" data-status="APPROVED">Approve</button>` : ""}
+      ${has("ADMIN") && g.approvalStatus !== "REJECTED" ? `<button class="ghost" data-act="approve" data-id="${g.id}" data-status="REJECTED">Reject</button>` : ""}
+      ${canDelete && !o.featured ? `<button class="danger" data-act="delgame" data-id="${g.id}">Delete</button>` : ""}
+    </div>`;
+  return `<article class="game ${o.featured ? "featured" : ""}">${cover(g)}<div class="gbody">
+      <div class="meta"><span class="chip">${esc(g.genre)}</span><span class="chip ${g.approvalStatus}">${g.approvalStatus}</span>${likes}</div>
+      <h3>${esc(g.title)}</h3><div class="muted small">by user #${g.creatorId} &middot; game ${g.id}</div>
+      <div>${esc(g.description)}</div>${buttons}
+      ${o.featured ? "" : `<div class="discuss" id="d-${g.id}"></div>`}</div></article>`;
+}
+
+async function loadDiscuss(id) {
+  const [rx, cm] = await Promise.all([api("GET", `/api/reactions?gameId=${id}&size=100`), api("GET", `/api/comments?gameId=${id}&size=100`)]);
+  const likes = rx.filter((r) => r.type === "LIKE").length;
+  const box = $("#d-" + id); if (!box) return;
+  box.innerHTML = `<p><b>${likes}</b> likes, <b>${rx.length - likes}</b> dislikes</p>` +
+    (cm.length ? "<ul>" + cm.map((c) => `<li><b>user #${c.userId}</b>: ${esc(c.body)}</li>`).join("") + "</ul>" : '<p class="muted">No comments yet.</p>') +
+    form("comment", [["body", "Add a comment", ""]], "Post comment", `data-id="${id}"`);
+}
+
+// ---------- auth page helpers ----------
+const authShell = (title, sub, body, foot = "") => `<div class="auth-wrap"><div class="auth-card"><div class="auth-brand"><span class="logo">CEG</span></div><h1>${esc(title)}</h1><p class="sub">${sub}</p>${body}</div>${foot ? `<p class="foot">${foot}</p>` : ""}</div>`;
+const authField = (f) => f.t === "hidden" ? `<input type="hidden" name="${f.n}" value="${esc(f.v)}">` :
+  `<div class="field"><div class="lab"><label for="f-${f.n}">${esc(f.l)}</label>${f.aside || ""}</div><div class="${f.t === "password" ? "pw" : ""}"><input id="f-${f.n}" name="${f.n}" type="${f.t || "text"}" value="${esc(f.v || "")}" autocomplete="${f.ac || "off"}" ${f.x || ""} required>${f.t === "password" ? '<button type="button" class="eye" data-act="toggle">Show</button>' : ""}</div></div>`;
+const authForm = (name, fields, label) => `<form data-form="${name}">${fields.map(authField).join("")}<button class="btn" type="submit">${esc(label)}</button></form>`;
+
+// ---------- views ----------
+const heroHtml = () => `<section class="hero"><div class="scan"></div>
+  <div><div class="eyebrow reveal" style="--i:0">Your next favorite game</div>
+    <h1><span class="reveal" style="--i:1">Ready</span> <span class="reveal" style="--i:2">to</span> <span class="reveal" style="--i:3">play?</span></h1>
+    <p class="reveal" style="--i:4">Discover new games, challenge yourself, and find your next favorite.</p>
+    <button class="btn reveal" style="--i:5" data-act="tab" data-tab="games">Explore Games</button></div>
+  <div class="readout reveal" style="--i:4"><div class="t">SERVICES</div><div class="rows" id="readout"><div><span>registry</span><span>...</span></div></div>
+    <div class="lat"><span>GATEWAY LATENCY</span><span id="latNow">-</span></div><svg id="spark" viewBox="0 0 140 30" preserveAspectRatio="none"></svg></div></section>`;
+const statsHtml = (games) => `<section class="stats">
+  <div class="stat"><div class="k">Games online</div><div class="v" ${games === "-" ? "" : `data-count="${games}"`}>${games === "-" ? "-" : 0}</div></div>
+  <div class="stat"><div class="k">Services up</div><div class="v" id="sSvc">-</div></div>
+  <div class="stat"><div class="k">Requests sent</div><div class="v" id="sReq" data-v="${reqTotal}">${reqTotal}</div></div>
+  <div class="stat"><div class="k">Avg latency</div><div class="v" id="sLat">-</div></div></section>`;
+
+const views = {
+  async home() {
+    if (!claims) {
+      const msg = '<div class="panel"><span class="muted">Sign in to load the catalog. </span><a href="#" data-act="tab" data-tab="signin">Sign in</a></div>';
+      return heroHtml() + statsHtml("-") +
+        `<section class="sec">${head("Handpicked for you", "Featured Game")}${msg}</section>
+        <section class="sec">${head("Player favorites", "Popular Games")}${msg}</section>
+        <section class="sec">${head("Find your kind of fun", "Browse Categories")}${msg}</section>`;
+    }
+    const games = await approvedGames();
+    if (!games.length) return heroHtml() + statsHtml(0) + `<section class="sec">${head("Handpicked for you", "Featured Game")}<div class="panel muted">No approved games yet.</div></section>`;
+    const likes = await likeCounts(games);
+    const ranked = [...games].sort((a, b) => (likes[b.id] || 0) - (likes[a.id] || 0) || a.id - b.id);
+    const genres = {}; games.forEach((g) => { genres[g.genre] = (genres[g.genre] || 0) + 1; });
+    return heroHtml() + statsHtml(games.length) +
+      `<section class="sec">${head("Handpicked for you", "Featured Game")}${gameCard(ranked[0], { featured: true, likes: likes[ranked[0].id] })}</section>` +
+      `<section class="sec">${head("Player favorites", "Popular Games", '<a href="#" data-act="allgames">View all games</a>')}<div class="grid">${ranked.slice(0, 4).map((g) => gameCard(g, { likes: likes[g.id] })).join("")}</div></section>` +
+      `<section class="sec">${head("Find your kind of fun", "Browse Categories")}<div class="cats">${Object.entries(genres).map(([n, c]) => `<button class="cat" data-act="genre" data-g="${esc(n)}"><b>${esc(n)}</b><span>${c} game${c === 1 ? "" : "s"}</span><em>&rarr;</em></button>`).join("")}</div></section>`;
+  },
+
+  async games() {
+    if (!claims) return signInPrompt("Sign in to browse the catalog.");
+    const q = view.mode === "mine" ? "?mine=true" : view.mode === "pending" ? "?status=PENDING" : has("ADMIN") ? "?status=APPROVED" : "";
+    let games = await api("GET", "/api/games" + q);
+    const genres = [...new Set(games.map((g) => g.genre))].sort();
+    if (view.genre) games = games.filter((g) => g.genre === view.genre);
+    if (view.q) { const s = view.q.toLowerCase(); games = games.filter((g) => [g.title, g.description, g.genre].join(" ").toLowerCase().includes(s)); }
+    const pill = (label, on, attrs) => `<button class="ghost ${on ? "on" : ""}" ${attrs}>${esc(label)}</button>`;
+    const pills = `<div class="pills">
+      ${pill("All games", view.mode === "all" && !view.genre, 'data-act="filter" data-mode="all"')}
+      ${genres.map((g) => pill(g, view.genre === g, `data-act="genre" data-g="${esc(g)}"`)).join("")}
+      ${pill("My games", view.mode === "mine", 'data-act="filter" data-mode="mine"')}
+      ${has("ADMIN") ? pill("Pending review", view.mode === "pending", 'data-act="filter" data-mode="pending"') : ""}</div>`;
+    const submit = has("DEVELOPER") || has("ADMIN")
+      ? `<details><summary>Submit a game</summary>${panel("Submit a game", form("game", [["title", "Title", "Bridge Builder"], ["genre", "Genre", "Puzzle"], ["description", "Description", "Design a truss that carries the load."], ["playableUrl", "Playable URL", "https://example.com/bridge-builder"]], "Submit for review"))}</details>`
+      : '<p class="muted small">Only developers and admins can submit games (a player gets 403).</p>';
+    const title = view.q ? `Results for "${view.q}"` : view.genre || (view.mode === "mine" ? "My games" : view.mode === "pending" ? "Pending review" : "All games");
+    return head("Catalog", title) + pills + submit + (games.length ? `<div class="grid">${games.map((g) => gameCard(g)).join("")}</div>` : '<div class="panel muted">Nothing here yet.</div>');
+  },
+
+  async dashboard() {
+    if (!claims) return signInPrompt("Sign in to see your dashboard.");
+    const entries = await api("GET", "/api/library");
+    const cards = [];
+    for (const e of entries) {
+      let g = null; try { g = await api("GET", "/api/games/" + e.gameId, undefined, { quiet: true }); } catch {}
+      cards.push(g ? `<article class="game">${cover(g)}<div class="gbody"><div class="meta"><span class="chip">${esc(g.genre)}</span><span class="chip ${g.approvalStatus}">${g.approvalStatus}</span></div><h3>${esc(g.title)}</h3><div class="muted small">Added ${new Date(e.addedAt).toLocaleString()}</div><div class="row"><button class="danger" data-act="unlib" data-id="${e.gameId}">Remove</button></div></div></article>`
+        : `<article class="game"><div class="gbody"><h3>Game #${e.gameId}</h3><div class="row"><button class="danger" data-act="unlib" data-id="${e.gameId}">Remove</button></div></div></article>`);
+    }
+    return head("Welcome back, " + claims.username, "Dashboard") +
+      `<div class="sec-head"><div><div class="eyebrow">Saved for later</div><h2 style="font-size:22px">My library</h2></div></div>` +
+      (cards.length ? `<div class="grid">${cards.join("")}</div>` : '<div class="panel muted">Your library is empty. Add a game from the Games page.</div>') +
+      `<section class="sec"><details><summary>Signed-in session (the token every service checks)</summary><pre>${esc(JSON.stringify(claims, null, 2))}</pre><p class="muted small">Expires ${new Date(claims.exp * 1000).toLocaleTimeString()}</p></details></section>`;
+  },
+
+  signin() {
+    if (claims) return authShell("You are signed in", `Signed in as <b>${esc(claims.username)}</b><span class="role">${roles().join(", ")}</span>`,
+      '<button class="btn" data-act="tab" data-tab="home">Go to home</button><div class="alt"><a href="#" data-act="logout">Sign out</a></div>');
+    return authShell("Sign in", "Welcome back. Enter your details to continue.",
+      authForm("login", [
+        { n: "username", l: "Username", v: lastReg.username, ac: "username" },
+        { n: "password", l: "Password", v: lastReg.password, t: "password", ac: "current-password", aside: '<a href="#" data-act="tab" data-tab="forgot">Forgot password?</a>' },
+      ], "Sign in") + '<div class="alt">New here? <a href="#" data-act="tab" data-tab="register">Create an account</a></div>',
+      "Demo administrator: user <b>admin</b>, password in docker/.env.");
+  },
+
+  register() {
+    return authShell("Create your account", "It takes a few seconds. New accounts are created as players.",
+      authForm("register", [
+        { n: "username", l: "Username", v: "demo_player", ac: "username", x: 'pattern="[A-Za-z0-9_.-]+" title="Letters, digits, _ . and -"' },
+        { n: "email", l: "Email", v: "demo@example.com", t: "email", ac: "email" },
+        { n: "password", l: "Password", v: "Demo-Pass-2026!", t: "password", ac: "new-password", x: 'minlength="8"' },
+        { n: "confirm", l: "Confirm password", v: "Demo-Pass-2026!", t: "password", ac: "new-password", x: 'minlength="8"' },
+      ], "Create account") + '<p class="fine">At least 8 characters.</p><div class="alt">Already have an account? <a href="#" data-act="tab" data-tab="signin">Sign in</a></div>');
+  },
+
+  forgot() {
+    if (forgotSent) return authShell("Check your email", `If <b>${esc(lastForgot)}</b> is registered, a reset link is on its way. The link works once and expires in 30 minutes.`,
+      '<div class="demo"><button class="ghost" data-act="mail">Open the reset email (demo)</button><a href="http://localhost:8025" target="_blank">Mailpit inbox</a></div><div id="mailbox"></div><div class="alt"><a href="#" data-act="tab" data-tab="signin">Back to sign in</a></div>');
+    return authShell("Reset your password", "Enter your email and we will send you a reset link.",
+      authForm("forgot", [{ n: "email", l: "Email", v: lastForgot || "demo@example.com", t: "email", ac: "email" }], "Send reset link") +
+      '<div class="alt"><a href="#" data-act="tab" data-tab="signin">Back to sign in</a></div>');
+  },
+
+  reset() {
+    const tk = new URLSearchParams(location.search).get("token") || "";
+    return authShell("Choose a new password", tk ? "Enter a new password for your account." : "Paste the token from the email and choose a new password.",
+      authForm("reset", [
+        tk ? { n: "token", t: "hidden", v: tk } : { n: "token", l: "Reset token", v: "" },
+        { n: "newPassword", l: "New password", t: "password", ac: "new-password", x: 'minlength="8"' },
+        { n: "confirm", l: "Confirm new password", t: "password", ac: "new-password", x: 'minlength="8"' },
+      ], "Set new password") + '<div class="alt"><a href="#" data-act="tab" data-tab="signin">Back to sign in</a></div>');
+  },
+
+  async admin() {
+    if (!has("ADMIN")) return '<div class="panel muted">Administrators only.</div>';
+    const users = await api("GET", "/api/users");
+    const sel = (kind, id, cur, opts) => `<select data-chg="${kind}" data-id="${id}">${opts.map((o) => `<option ${o === cur ? "selected" : ""}>${o}</option>`).join("")}</select>`;
+    return head("Administration", "Users") + `<p class="muted small">A role change applies at the user's next login, because the role travels inside the token.</p>
+      <table><tr><th>ID</th><th>Username</th><th>Email</th><th>Role</th><th>Status</th></tr>${users.map((u) =>
+        `<tr><td>${u.id}</td><td>${esc(u.username)}</td><td>${esc(u.email)}</td><td>${sel("role", u.id, u.role, ["PLAYER", "DEVELOPER", "ADMIN"])}</td><td>${sel("status", u.id, u.status, ["ACTIVE", "SUSPENDED"])}</td></tr>`).join("")}</table>`;
+  },
+
+  async platform() {
+    return head("Platform", "Service health") + `<div class="cols">
+      ${panel("Service discovery (Eureka)", '<div id="eureka" class="muted">Loading...</div><p class="muted small">Refreshes every 3 seconds.</p>')}
+      ${panel("Live probe", `<p class="muted small">Calls GET /api/library through the gateway twice a second. Green = 200, red = failed. Kill an instance and watch.</p>
+        <div class="row"><button class="btn" id="probeBtn" data-act="probe">Start probe</button><span id="probeStat" class="muted small"></span></div><div id="probeDots" class="probe"></div>`)}
+    </div>`;
+  },
+};
+
+// ---------- render ----------
+let timers = [];
+function stopTimers() { timers.forEach(clearInterval); timers = []; probeOn = false; }
+async function render() {
+  stopTimers();
+  const names = { home: "Home", games: "Games", dashboard: "Dashboard", admin: "Admin", platform: "Platform" };
+  const show = Object.keys(names).filter((k) => k !== "admin" || has("ADMIN"));
+  $("#navbtns").innerHTML = show.map((k) => `<button class="${k === tab ? "on" : ""}" data-act="tab" data-tab="${k}">${names[k]}</button>`).join("");
+  moveIndicator();
+  $("#auth").innerHTML = claims
+    ? `<span class="who">Signed in as <b>${esc(claims.username)}</b><span class="role">${roles().join(", ")}</span></span><button class="ghost" data-act="logout">Sign out</button>`
+    : '<button class="ghost" data-act="tab" data-tab="signin">Sign in</button><button class="btn" data-act="tab" data-tab="register">Register</button>';
+  const v = $("#view"); v.innerHTML = '<div class="skel"></div><div class="skel"></div><div class="skel"></div>';
+  try { v.innerHTML = await views[tab](); } catch (e) { v.innerHTML = `<div class="panel">${e.status === 503 ? "Unable to load. " : ""}${esc(e.message)}</div>`; }
+  stagger();
+  document.querySelectorAll("[data-count]").forEach((el) => { el.dataset.v = 0; countTo(el, Number(el.dataset.count)); });
+  if (tab === "platform") { refreshEureka(); timers.push(setInterval(refreshEureka, 3000)); }
+  if (tab === "home") { refreshReadout(); timers.push(setInterval(refreshReadout, 5000)); updateStats(); }
+}
+async function eurekaApps() { return (await (await fetch("/eureka/apps", { headers: { Accept: "application/json" } })).json()).applications.application || []; }
+async function refreshReadout() {
+  const box = $("#readout"); if (!box) return;
+  try {
+    const apps = await eurekaApps(); let up = 0;
+    box.innerHTML = apps.map((a) => {
+      const inst = [].concat(a.instance), n = inst.filter((i) => i.status === "UP").length; up += n ? 1 : 0;
+      return `<div><span><i class="dot ${n ? "" : "down"}"></i>${esc(a.name.toLowerCase())}</span><span class="${n ? "st-UP" : "st-DOWN"}">${n}/${inst.length} UP</span></div>`;
+    }).join("");
+    countTo($("#sSvc"), up, (n) => Math.round(n) + "/" + apps.length);
+  } catch { box.innerHTML = '<div><span><i class="dot down"></i>registry</span><span class="st-DOWN">offline</span></div>'; }
+}
+async function refreshEureka() {
+  const box = $("#eureka"); if (!box) return;
+  try {
+    box.innerHTML = (await eurekaApps()).map((a) => {
+      const inst = [].concat(a.instance);
+      return `<div><b>${esc(a.name.toLowerCase())}</b> &middot; ${inst.length} instance${inst.length === 1 ? "" : "s"}: ` +
+        inst.map((i) => `<span class="st-${i.status}">${i.status}</span> <span class="muted small">${esc(i.ipAddr)}:${i.port && i.port.$}</span>`).join(" &nbsp; ") + "</div>";
+    }).join("") || "No services registered.";
+  } catch { box.textContent = "Eureka not reachable on :8761."; }
+}
+
+// ---------- live probe ----------
+let probeOn = false, probeN = 0, probeBad = 0;
+async function probeTick() {
+  const t0 = performance.now(); let code = 0;
+  try { await api("GET", "/api/library", undefined, { quiet: true }); code = 200; } catch (e) { code = e.status || 0; }
+  probeN++; if (code !== 200) probeBad++;
+  const dots = $("#probeDots"); if (!dots) return;
+  dots.insertAdjacentHTML("beforeend", `<i class="${code === 200 ? "" : code === 503 ? "bad" : "mid"}" title="${code} (${Math.round(performance.now() - t0)} ms)"></i>`);
+  while (dots.children.length > 80) dots.removeChild(dots.firstChild);
+  $("#probeStat").textContent = `${probeN} sent, ${probeBad} not 200. Last: ${code || "no connection"}`;
+}
+
+// ---------- actions ----------
+const acts = {
+  tab: (d) => { tab = d.tab; forgotSent = false; if (tab === "games") view = { mode: "all", genre: null, q: "" }; notice(""); render(); },
+  toggle(d, el) { const i = el.parentElement.querySelector("input"), show = i.type === "password"; i.type = show ? "text" : "password"; el.textContent = show ? "Hide" : "Show"; },
+  allgames: () => { tab = "games"; view = { mode: "all", genre: null, q: "" }; render(); },
+  genre: (d) => { tab = "games"; view = { mode: "all", genre: d.g, q: "" }; render(); },
+  filter: (d) => { view = { mode: d.mode, genre: null, q: "" }; render(); },
+  logout: () => { setToken(null); tab = "home"; notice("Signed out."); render(); },
+  async lib(d) { await api("POST", "/api/library", { gameId: Number(d.id) }); notice("Added to your library (201).", "ok"); },
+  async unlib(d) { await api("DELETE", "/api/library/" + d.id); notice("Removed from your library.", "ok"); render(); },
+  async react(d) {
+    try { await api("POST", "/api/reactions", { gameId: Number(d.id), type: d.type }); notice(d.type + " saved (201).", "ok"); }
+    catch (e) {
+      if (e.status !== 409) throw e;
+      const mine = (await api("GET", `/api/reactions?gameId=${d.id}&size=100`)).find((r) => r.userId === me());
+      if (!mine) throw e;
+      await api("PUT", "/api/reactions/" + mine.id, { type: d.type }); notice("You had already reacted, so your reaction was changed to " + d.type + ".", "ok");
+    }
+    if ($("#d-" + d.id) && $("#d-" + d.id).innerHTML) loadDiscuss(d.id);
+  },
+  async discuss(d) { const box = $("#d-" + d.id); if (box.innerHTML) { box.innerHTML = ""; return; } await loadDiscuss(d.id); },
+  async approve(d) { await api("PUT", `/api/games/${d.id}/approval`, { status: d.status }); notice("Game " + d.id + " is now " + d.status + ".", "ok"); render(); },
+  async delgame(d) { if (!confirm("Delete this game?")) return; await api("DELETE", "/api/games/" + d.id); notice("Game deleted.", "ok"); render(); },
+  probe() {
+    if (!claims) { notice("Sign in first so the probe can call the engagement service.", "err"); return; }
+    probeOn = !probeOn; $("#probeBtn").textContent = probeOn ? "Stop probe" : "Start probe";
+    if (probeOn) { probeN = 0; probeBad = 0; $("#probeDots").innerHTML = ""; timers.push(setInterval(probeTick, 500)); }
+    else { stopTimers(); timers.push(setInterval(refreshEureka, 3000)); }
+  },
+  async mail() {
+    const email = (document.querySelector('form[data-form="forgot"] [name=email]') || {}).value || lastForgot;
+    const list = await (await fetch("/mail/api/v1/messages")).json();
+    const hit = (list.messages || []).find((m) => (m.To || []).some((t) => t.Address.toLowerCase() === email.toLowerCase()));
+    const box = $("#mailbox");
+    if (!hit) { box.innerHTML = '<p class="muted small">No email for that address. Unknown addresses get none, but the answer to the request is the same 202.</p>'; return; }
+    const msg = await (await fetch("/mail/api/v1/message/" + hit.ID)).json();
+    const m = /https?:\/\/[^\s"'<>]*reset-password\.html\?token=[^\s"'<>]+/.exec(msg.Text || msg.HTML || "");
+    box.innerHTML = `<p class="muted small">Subject: <b>${esc(msg.Subject)}</b></p>` + (m ? `<p><a href="${location.origin + new URL(m[0]).pathname + new URL(m[0]).search}">Reset link from the email</a> <span class="muted small">(opens the reset form with the token filled in)</span></p>` : '<p class="muted small">No reset link found in the email.</p>');
+  },
+};
+
+const forms = {
+  search(d) { tab = "games"; view = { mode: "all", genre: null, q: d.q.trim() }; render(); },
+  async register(d) {
+    if (d.password !== d.confirm) throw new Error("Passwords do not match");
+    await api("POST", "/api/auth/register", { username: d.username, email: d.email, password: d.password }, { anon: true });
+    lastReg = { username: d.username, password: d.password }; tab = "signin"; notice("Account created for " + d.username + " (201, role PLAYER). Sign in to continue.", "ok"); render();
+  },
+  async login(d) { const r = await api("POST", "/api/auth/login", d, { anon: true }); setToken(r.accessToken); tab = "home"; notice("Signed in. The gateway returned a signed token that lasts " + Math.round(r.expiresIn / 60) + " minutes.", "ok"); render(); },
+  async forgot(d) { lastForgot = d.email; await api("POST", "/api/auth/forgot-password", { email: d.email }, { anon: true }); forgotSent = true; notice("202: the answer is the same whether or not the address is registered.", "ok"); render(); },
+  async reset(d) {
+    if (d.newPassword !== d.confirm) throw new Error("Passwords do not match");
+    await api("POST", "/api/auth/reset-password", { token: d.token, newPassword: d.newPassword }, { anon: true });
+    history.replaceState(null, "", "/"); lastReg = { username: "", password: "" }; tab = "signin"; notice("Password changed. The token cannot be used again. Sign in with your new password.", "ok"); render();
+  },
+  async game(d) { await api("POST", "/api/games", d); notice("Submitted (201). It starts as PENDING; an admin must approve it before players can see it.", "ok"); view = { mode: "mine", genre: null, q: "" }; render(); },
+  async comment(d, ds) { await api("POST", "/api/comments", { gameId: Number(ds.id), body: d.body }); notice("Comment posted (201).", "ok"); loadDiscuss(ds.id); },
+};
+
+document.addEventListener("click", async (e) => {
+  const el = e.target.closest("[data-act]"); if (!el) return;
+  if (el.tagName === "A") e.preventDefault();
+  try { await acts[el.dataset.act](el.dataset, el); } catch (err) { notice(err.message, "err"); }
+});
+document.addEventListener("submit", async (e) => {
+  const f = e.target.closest("form[data-form]"); if (!f) return; e.preventDefault();
+  try { await forms[f.dataset.form](Object.fromEntries(new FormData(f)), f.dataset); } catch (err) { notice(err.message, "err"); }
+});
+document.addEventListener("change", async (e) => {
+  const s = e.target.closest("select[data-chg]"); if (!s) return;
+  try {
+    await api("PUT", `/api/users/${s.dataset.id}/${s.dataset.chg}`, s.dataset.chg === "role" ? { role: s.value } : { status: s.value });
+    notice(`User ${s.dataset.id}: ${s.dataset.chg} set to ${s.value}.`, "ok");
+  } catch (err) { notice(err.message, "err"); render(); }
+});
+
+if (new URLSearchParams(location.search).get("token")) tab = "reset";
+render();
+</script>
+</body>
+</html>
