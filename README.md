@@ -5,6 +5,46 @@ A CoolMathGames-style arcade of short, engineering-themed browser games, built a
 > **Phase 1** (canonical data model, REST CRUD, Docker, `dev`/`prod` config) is in place and still passes its tests.
 > **Phase 2** adds security (registration, login, roles, password reminder), a bearer token that travels across services, service discovery, a gateway in front of everything, and a Gatling stress test. See [Security](#security), [Stress test](#stress-test-scalability-and-resilience) and [Postman](#postman).
 
+## Quick start
+
+You need Java 25, Maven 3.9+, Docker with Compose, and at least 5 GB of memory available to Docker (the running stack uses about 3.5 GB). Node 18+ is only needed for the optional command-line Postman run.
+
+```bash
+git clone https://github.com/Quite-Skrimple/cool-engineering-games.git
+cd cool-engineering-games
+cp docker/.env.example docker/.env      # the example values work as they are for a demo
+mvn package -DskipTests                 # builds the jars the Docker images copy in
+cd docker
+docker compose up --build -d
+```
+
+The first start downloads images and takes a few minutes. `docker compose ps` shows every service as `healthy` when it is ready (the gateway starts last). Then:
+
+- **Log in** as `admin` with the password from `docker/.env` (`change-me-Admin-123` if you kept the example). Registering a new account creates a player.
+- **Run the whole API check:** import the two files in `postman/` (see [Postman](#postman)), or from the repository root run `npx newman run postman/cool-engineering-games.postman_collection.json -e postman/cool-engineering-games.postman_environment.json --env-var adminPassword=change-me-Admin-123`. All 127 assertions should pass.
+- **Run the stress test:** see [Stress test](#stress-test-scalability-and-resilience).
+- **Stop everything:** `docker compose down` (add `-v` to also delete the data).
+
+| URL | What |
+|---|---|
+| http://localhost:8000 | The gateway: the only door to the API |
+| http://localhost:8761 | Eureka dashboard: every registered service instance |
+| http://localhost:8025 | Mailpit: the inbox that receives password reset emails |
+| http://localhost:8888 | Config server |
+
+### Where each Phase 2 requirement lives
+
+| Requirement | Where | How to see it |
+|---|---|---|
+| Authentication | `identity-service`: `AuthController`, `AuthService`, `JwtService`; shared token verification in `common-security` | Postman folder 1; `POST /api/auth/login` |
+| Authorization | Coarse role rules in `gateway` (`GatewaySecurityConfig`); fine rules and ownership checks in every service (`@PreAuthorize`) | Postman folders 2, 3 and 6; the "security" journey in the Gatling test |
+| User registration | `identity-service`: `POST /api/auth/register` | Postman folder 1 |
+| Password reminder | `identity-service`: `PasswordResetService`, `MailService`; emails land in Mailpit | Postman folder 5; open http://localhost:8025 |
+| Bearer token across services | `engagement-service`: `GameCatalogClient` forwards the caller's token to `game-catalog-service` | Postman folder 4 (a player gets `404` and an administrator `201` for the same pending game) |
+| Service discovery | `discovery-server` (Eureka); every route in `gateway/src/main/resources/application.yml` is `lb://<service-name>` | http://localhost:8761; Postman folder 7; scale a service and watch new instances appear |
+| Scalability and resilience | `load-tests` (Gatling) and `docker/docker-compose.constrained.yml` | [Stress test](#stress-test-scalability-and-resilience) |
+| Everything through a gateway | `gateway` is the only published port for the business services | `docker compose ps`: the catalog, engagement and identity services publish nothing |
+
 ## Architecture
 
 ```mermaid
@@ -226,7 +266,7 @@ The collection has **88 requests and 127 assertions**, all through the gateway, 
 4. Bearer token across services (engagement calls the catalog)
 5. Password reminder (reads the email from Mailpit, so it needs Mailpit running)
 6. Account status and admin guard rails
-7. Platform: Eureka registry, config server, gateway routes
+7. Platform: discovery, config, gateway
 8. Cleanup (deletes everything the run created, so the collection can be re-run)
 
 Run it top to bottom with the Collection Runner, or from the command line:
